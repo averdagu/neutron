@@ -19,10 +19,10 @@ from neutron_lib.api.definitions import portbindings
 from neutron_lib.callbacks import events
 from neutron_lib.callbacks import registry
 from neutron_lib import constants
-from oslo_config import cfg
 from oslo_log import log
 
 from neutron.agent import securitygroups_rpc
+from neutron.plugins.ml2.common import utils
 from neutron.plugins.ml2.drivers import mech_agent
 from neutron.plugins.ml2.drivers.openvswitch.agent.common \
     import constants as a_const
@@ -30,9 +30,6 @@ from neutron.services.logapi.drivers.openvswitch import driver as log_driver
 from neutron.services.qos.drivers.openvswitch import driver as ovs_qos_driver
 
 LOG = log.getLogger(__name__)
-
-IPTABLES_FW_DRIVER_FULL = ("neutron.agent.linux.iptables_firewall."
-                           "OVSHybridIptablesFirewallDriver")
 
 
 class OpenvswitchMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
@@ -47,9 +44,7 @@ class OpenvswitchMechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     def __init__(self):
         sg_enabled = securitygroups_rpc.is_firewall_enabled()
-        hybrid_plug_required = (not cfg.CONF.SECURITYGROUP.firewall_driver or
-            cfg.CONF.SECURITYGROUP.firewall_driver in (
-                IPTABLES_FW_DRIVER_FULL, 'iptables_hybrid')) and sg_enabled
+        hybrid_plug_required = utils.is_hybrid_plug_required() and sg_enabled
         vif_details = {portbindings.CAP_PORT_FILTER: sg_enabled,
                        portbindings.OVS_HYBRID_PLUG: hybrid_plug_required}
         # NOTE(moshele): Bind DIRECT (SR-IOV) port allows

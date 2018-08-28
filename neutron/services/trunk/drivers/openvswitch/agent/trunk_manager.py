@@ -16,6 +16,8 @@ from oslo_log import log as logging
 
 from neutron._i18n import _
 from neutron.agent.common import ovs_lib
+from neutron.common import constants as n_const
+from neutron.plugins.ml2.common import utils as c_utils
 from neutron.services.trunk.drivers.openvswitch.agent import exceptions as exc
 from neutron.services.trunk.drivers.openvswitch import utils
 
@@ -56,6 +58,14 @@ def get_patch_peer_attrs(peer_name, port_mac=None, port_id=None):
     return attrs
 
 
+def gen_port_name(prefix, id_):
+    return ("%s%s" % (prefix, id_))[:n_const.NIC_NAME_LEN]
+
+
+def get_veth_pair_names(id_):
+    return (gen_port_name("qvb", id), gen_port_name("qvo", id))
+
+
 class TrunkBridge(ovs_lib.OVSBridge):
     """An OVS trunk bridge.
 
@@ -85,11 +95,15 @@ class TrunkParentPort(object):
         self.port_id = port_id
         self.port_mac = port_mac
         self.bridge = TrunkBridge(self.trunk_id)
+        self.needs_hybrid_plug = c_utils.is_hybrid_plug_required()
         self.patch_port_int_name = get_br_int_port_name(
             self.DEV_PREFIX, port_id)
         self.patch_port_trunk_name = get_br_trunk_port_name(
             self.DEV_PREFIX, port_id)
         self._transaction = None
+
+    def _plug_hybrid(self, br_int):
+        pass
 
     def plug(self, br_int):
         """Plug patch ports between trunk bridge and given bridge.
@@ -102,6 +116,10 @@ class TrunkParentPort(object):
         :param br_int: an integration bridge where peer endpoint of patch port
                        will be created.
         """
+        if self.needs_hybrid_plug:
+            self._plug_hybrid(br_int)
+            return
+
         # NOTE(jlibosva): OVSDB is an api so it doesn't matter whether we
         # use self.bridge or br_int
         ovsdb = self.bridge.ovsdb
@@ -125,6 +143,9 @@ class TrunkParentPort(object):
             txn.add(ovsdb.db_set('Interface', self.patch_port_trunk_name,
                                  *patch_trunk_attrs))
 
+    def _unplug_hybrid(self, bridge):
+        pass
+
     def unplug(self, bridge):
         """Unplug the trunk from bridge.
 
@@ -134,11 +155,15 @@ class TrunkParentPort(object):
         :param bridge: bridge that has peer side of patch port for this
                        subport.
         """
+        if self.needs_hybrid_plug:
+            self._unplug_hybrid(bridge)
+
         ovsdb = self.bridge.ovsdb
         with ovsdb.transaction() as txn:
             txn.add(ovsdb.del_br(self.bridge.br_name))
-            txn.add(ovsdb.del_port(self.patch_port_int_name,
-                                   bridge.br_name))
+            if not self.needs_hybrid_plug:
+                txn.add(ovsdb.del_port(self.patch_port_int_name,
+                                       bridge.br_name))
 
 
 class SubPort(TrunkParentPort):
