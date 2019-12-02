@@ -112,6 +112,7 @@
       jobs:
         - neutron-ovn-tempest-ovs-master
         - neutron-ovn-grenade
+        - neutron-george
 
     periodic:
       jobs:

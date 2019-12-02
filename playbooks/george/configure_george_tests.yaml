@@ -1,0 +1,61 @@
+---
+- name: Configure host to be ready to run functional tests
+  hosts: all
+  roles:
+    - setup_logdir
+    - configure_functional_tests
+
+- name: Configure host to be ready to run George tests
+  hosts: all
+  vars:
+    base_dir: "{{ ansible_user_dir }}/src/opendev.org"
+    gate_dest_dir: "{{ base_dir }}/openstack"
+    devstack_dir: "{{ gate_dest_dir }}/devstack"
+    project_dir: "{{ gate_dest_dir }}/neutron"
+  tasks:
+    - name: "WORKAROUND: add atomic ubuntu repositories"
+      shell:
+        cmd: |
+          apt update
+          apt -y  install software-properties-common
+          add-apt-repository -y ppa:projectatomic/ppa
+          apt update
+        executable: /bin/bash
+      when: ansible_distribution == 'Ubuntu'
+      become: yes
+
+    - name: install podman and buildah
+      package:
+        name:
+          - podman
+          - runc
+          - buildah
+          - containernetworking-plugins
+          - containers-common
+          - containers-golang
+          - containers-image
+        state: latest
+      become: yes
+
+    - name: insert openvswitch and vport-geneve modules
+      modprobe:
+        name: "{{ item }}"
+        state: present
+      become: yes
+      with_items:
+        - openvswitch
+        - vport-geneve
+
+    - name: "WORKAROUND: Set cni net.d writable for everyone"
+      file:
+        path: /etc/cni/net.d/
+        mode: '0777'
+      become: yes
+
+    - name: build container images
+      shell:
+        cmd: |
+          set -e
+          set -x
+          {{ project_dir }}/neutron/tests/contrib/george/build_container_images.sh
+        executable: /bin/bash

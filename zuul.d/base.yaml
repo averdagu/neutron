@@ -1,7 +1,6 @@
 - job:
-    name: neutron-functional
+    name: neutron-system-integration
     parent: devstack-minimal
-    description: Run neutron functional tests
     timeout: 7800
     required-projects:
       - opendev.org/openstack/devstack
@@ -9,9 +8,6 @@
       - openstack/requirements
     roles:
       - zuul: openstack/devstack
-    pre-run: playbooks/configure_functional_job.yaml
-    run: playbooks/run_functional_job.yaml
-    post-run: playbooks/post_functional_job.yaml
     irrelevant-files:
       - ^.*\.rst$
       - ^doc/.*$
@@ -21,6 +17,15 @@
       OVN_BRANCH: v20.03.0
       # TODO(jlibosva): v2.13.0 is incompatible with kernel 4.15.0, sticking to commit hash until new v2.13 tag is created.
       OVS_BRANCH: 51e9479da62edb04a5be47a7655de75c299b9fa1
+
+- job:
+    name: neutron-functional
+    parent: neutron-system-integration
+    description: Run neutron functional tests
+    pre-run: playbooks/configure_functional_job.yaml
+    run: playbooks/run_functional_job.yaml
+    post-run: playbooks/post_functional_job.yaml
+    vars:
       devstack_services:
         # Ignore any default set by devstack. Emit a "disable_all_services".
         base: false
@@ -72,3 +77,17 @@
       # in base neutron-functional job as that is being used by neutron
       # stadium projects where they need to use stadium project as working dir.
       zuul_work_dir: src/opendev.org/openstack/neutron
+
+- job:
+    name: neutron-george
+    parent: neutron-system-integration
+    description: This is George, experimental testing framework running multiple multi-node environments on a single host in parallel.
+    pre-run: playbooks/george/configure_george_tests.yaml
+    run: playbooks/george/run_george_run.yaml
+    post-run: playbooks/george/post_run.yaml
+    vars:
+      tox_envlist: george
+      tox_environment:
+        OS_LOG_PATH: '/opt/stack/logs'
+      zuul_copy_output:
+        /tmp/george-logs: logs
