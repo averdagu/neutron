@@ -858,12 +858,23 @@ class OVNMechanismDriver(api.MechanismDriver):
                                  nat['external_mac']})).execute()
 
         if up:
-            mac = nat['external_ids'][ovn_const.OVN_FIP_EXT_MAC_KEY]
-            LOG.debug("Setting external_mac of port %s to %s",
-                      port_id, mac)
-            self._nb_ovn.db_set(
-                'NAT', nat['_uuid'],
-                ('external_mac', mac)).execute(check_error=True)
+            prov_net_type = self._ovn_client.get_nat_entry_network_type(nat)
+            if prov_net_type != const.TYPE_VLAN:
+                mac = nat['external_ids'][ovn_const.OVN_FIP_EXT_MAC_KEY]
+                LOG.debug("Setting external_mac of port %s to %s",
+                          port_id, mac)
+                self._nb_ovn.db_set(
+                    'NAT', nat['_uuid'],
+                    ('external_mac', mac)).execute(check_error=True)
+            else:
+                LOG.warning(
+                    "Configuring floating ip %(fip)s to be "
+                    "centralized because it's placed on provider network "
+                    " of VLAN type which currently doesn't work "
+                    "distributed." % {
+                        'fip': nat[
+                            'external_ids'][ovn_const.OVN_FIP_EXT_ID_KEY]
+                    })
         else:
             LOG.debug("Clearing up external_mac of port %s", port_id)
             self._nb_ovn.db_clear(

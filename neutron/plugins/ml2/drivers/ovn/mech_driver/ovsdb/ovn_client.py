@@ -766,7 +766,17 @@ class OVNClient(object):
             columns['logical_port'] = floatingip['port_id']
             ext_ids[ovn_const.OVN_FIP_EXT_MAC_KEY] = port['mac_address']
             if self._nb_idl.lsp_get_up(floatingip['port_id']).execute():
-                columns['external_mac'] = port['mac_address']
+                prov_net_type = self._plugin.get_network(
+                    admin_context,
+                    fip_db['floating_network_id'])[pnet.NETWORK_TYPE]
+                if prov_net_type != const.TYPE_VLAN:
+                    columns['external_mac'] = port['mac_address']
+                else:
+                    LOG.warning(
+                        "Configuring floating ip %(fip)s to be "
+                        "centralized because it's placed on provider network "
+                        " of VLAN type which currently doesn't work "
+                        "distributed." % {'fip': floatingip['id']})
 
         # TODO(dalvarez): remove this check once the minimum OVS required
         # version contains the column (when OVS 2.8.2 is released).
@@ -2302,3 +2312,12 @@ class OVNClient(object):
             if ls_dns_record.records.get(hostname):
                 txn.add(self._nb_idl.dns_remove_record(
                         ls_dns_record.uuid, hostname, if_exists=True))
+
+    def get_nat_entry_network_type(self, nat):
+        """Return network type for the given nat entry."""
+        admin_context = n_context.get_admin_context()
+        fip_network_id = self._l3_plugin._get_floatingip(
+            admin_context, nat['external_ids'][
+            ovn_const.OVN_FIP_EXT_ID_KEY])['floating_network_id']
+        return self._plugin.get_network(admin_context,
+                                        fip_network_id)[pnet.NETWORK_TYPE]
