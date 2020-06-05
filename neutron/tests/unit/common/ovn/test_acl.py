@@ -548,63 +548,18 @@ class TestACLs(base.BaseTestCase):
         ip_version = 'ip4'
         sg_id = sg_rule['security_group_id']
 
-        addrset_name = ovn_utils.ovn_addrset_name(sg_id, ip_version)
+        pg_name = ovn_utils.ovn_pg_addrset_name(sg_id, ip_version)
 
         match = ovn_acl.acl_remote_group_id(sg_rule, ip_version)
         self.assertEqual('', match)
 
         sg_rule['remote_group_id'] = sg_id
         match = ovn_acl.acl_remote_group_id(sg_rule, ip_version)
-        self.assertEqual(' && ip4.src == $' + addrset_name, match)
+        self.assertEqual(' && ip4.src == $' + pg_name, match)
 
         sg_rule['direction'] = 'egress'
         match = ovn_acl.acl_remote_group_id(sg_rule, ip_version)
-        self.assertEqual(' && ip4.dst == $' + addrset_name, match)
-
-    def _test_update_acls_for_security_group(self, use_cache=True):
-        sg = fakes.FakeSecurityGroup.create_one_security_group().info()
-        remote_sg = fakes.FakeSecurityGroup.create_one_security_group().info()
-        sg_rule = fakes.FakeSecurityGroupRule.create_one_security_group_rule({
-            'security_group_id': sg['id'],
-            'remote_group_id': remote_sg['id']
-        }).info()
-        port = fakes.FakePort.create_one_port({
-            'security_groups': [sg['id']]
-        }).info()
-        self.plugin.get_ports.return_value = [port]
-        if use_cache:
-            sg_ports_cache = {sg['id']: [{'port_id': port['id']}],
-                              remote_sg['id']: []}
-        else:
-            sg_ports_cache = None
-            self.plugin._get_port_security_group_bindings.return_value = \
-                [{'port_id': port['id']}]
-
-        # Build ACL for validation.
-        expected_acl = ovn_acl._add_sg_rule_acl_for_port(port, sg_rule)
-        expected_acl.pop('lport')
-        expected_acl.pop('lswitch')
-
-        # Validate ACLs when port has security groups.
-        ovn_acl.update_acls_for_security_group(self.plugin,
-                                               self.admin_context,
-                                               self.driver._nb_ovn,
-                                               sg['id'],
-                                               sg_rule,
-                                               sg_ports_cache=sg_ports_cache)
-        self.driver._nb_ovn.update_acls.assert_called_once_with(
-            [port['network_id']],
-            mock.ANY,
-            {port['id']: expected_acl},
-            need_compare=False,
-            is_add_acl=True
-        )
-
-    def test_update_acls_for_security_group_cache(self):
-        self._test_update_acls_for_security_group(use_cache=True)
-
-    def test_update_acls_for_security_group_no_cache(self):
-        self._test_update_acls_for_security_group(use_cache=False)
+        self.assertEqual(' && ip4.dst == $' + pg_name, match)
 
     def test_acl_port_ips(self):
         port4 = fakes.FakePort.create_one_port({
