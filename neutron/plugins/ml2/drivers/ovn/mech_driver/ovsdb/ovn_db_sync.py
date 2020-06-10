@@ -30,6 +30,7 @@ from neutron.common.ovn import constants as ovn_const
 from neutron.common.ovn import utils
 from neutron.conf.plugins.ml2.drivers.ovn import ovn_conf
 from neutron import manager
+from neutron.objects import securitygroup as sg_obj
 from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import ovn_client
 from neutron.services.segments import db as segments_db
 
@@ -247,9 +248,11 @@ class OvnNbSynchronizer(OvnDbSynchronizer):
 
         neutron_acls = []
         for sgr in self.core_plugin.get_security_group_rules(ctx):
-            pg_name = utils.ovn_port_group_name(sgr['security_group_id'])
+            sg_id = sgr['security_group_id']
+            pg_name = utils.ovn_port_group_name(sg_id)
+            stateful = sg_obj.SecurityGroup.get_sg_by_id(ctx, sg_id).stateful
             neutron_acls.append(acl_utils._add_sg_rule_acl_for_port_group(
-                pg_name, sgr))
+                pg_name, sgr, stateful))
         neutron_acls += acl_utils.add_acls_for_drop_port_group(
             ovn_const.OVN_DROP_PORT_GROUP_NAME)
 

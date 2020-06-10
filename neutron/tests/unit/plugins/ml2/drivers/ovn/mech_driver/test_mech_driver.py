@@ -48,12 +48,14 @@ from neutron.db import ovn_revision_numbers_db
 from neutron.db import provisioning_blocks
 from neutron.db import securitygroups_db
 from neutron.db import segments_db
+from neutron.objects import securitygroup as sg_obj
 from neutron.plugins.ml2.drivers.ovn.agent import neutron_agent
 from neutron.plugins.ml2.drivers.ovn.mech_driver import mech_driver
 from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import ovn_client
 from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb import ovsdb_monitor
 from neutron.plugins.ml2.drivers import type_geneve  # noqa
 from neutron.services.revisions import revision_plugin
+from neutron.tests.unit.extensions import test_securitygroup as test_sg
 from neutron.tests.unit.extensions import test_segment
 from neutron.tests.unit import fake_resources as fakes
 from neutron.tests.unit.plugins.ml2 import test_ext_portsecurity
@@ -188,7 +190,9 @@ class TestOVNMechanismDriver(test_plugin.Ml2PluginV2TestCase):
                 self.mech_driver,
                 '_sg_has_rules_with_same_normalized_cidr') as has_same_rules, \
                 mock.patch.object(
-                    ovn_acl, 'update_acls_for_security_group') as ovn_acl_up:
+                    ovn_acl, 'update_acls_for_security_group') as ovn_acl_up, \
+                mock.patch.object(
+                    sg_obj.SecurityGroup, 'get_sg_by_id'):
             rule = {'security_group_id': 'sg_id'}
             self.mech_driver._process_sg_rule_notification(
                 resources.SECURITY_GROUP_RULE, events.AFTER_CREATE, {},
@@ -196,7 +200,7 @@ class TestOVNMechanismDriver(test_plugin.Ml2PluginV2TestCase):
             has_same_rules.assert_not_called()
             ovn_acl_up.assert_called_once_with(
                 mock.ANY, mock.ANY, mock.ANY,
-                'sg_id', rule, is_add_acl=True)
+                'sg_id', rule, mock.ANY, is_add_acl=True)
             mock_bump.assert_called_once_with(
                 mock.ANY, rule, ovn_const.TYPE_SECURITY_GROUP_RULES)
 
@@ -207,7 +211,9 @@ class TestOVNMechanismDriver(test_plugin.Ml2PluginV2TestCase):
                 self.mech_driver,
                 '_sg_has_rules_with_same_normalized_cidr') as has_same_rules, \
                 mock.patch.object(
-                    ovn_acl, 'update_acls_for_security_group') as ovn_acl_up:
+                    ovn_acl, 'update_acls_for_security_group') as ovn_acl_up, \
+                mock.patch.object(
+                    sg_obj.SecurityGroup, 'get_sg_by_id'):
             rule = {'security_group_id': 'sg_id',
                     'remote_ip_prefix': '1.0.0.0/24'}
             self.mech_driver._process_sg_rule_notification(
@@ -216,7 +222,7 @@ class TestOVNMechanismDriver(test_plugin.Ml2PluginV2TestCase):
             has_same_rules.assert_not_called()
             ovn_acl_up.assert_called_once_with(
                 mock.ANY, mock.ANY, mock.ANY,
-                'sg_id', rule, is_add_acl=True)
+                'sg_id', rule, mock.ANY, is_add_acl=True)
             mock_bump.assert_called_once_with(
                 mock.ANY, rule, ovn_const.TYPE_SECURITY_GROUP_RULES)
 
@@ -227,13 +233,15 @@ class TestOVNMechanismDriver(test_plugin.Ml2PluginV2TestCase):
                 as ovn_acl_up, \
                 mock.patch.object(securitygroups_db.SecurityGroupDbMixin,
                                   'get_security_group_rule',
-                                  return_value=rule):
+                                  return_value=rule), \
+                mock.patch.object(
+                    sg_obj.SecurityGroup, 'get_sg_by_id'):
             self.mech_driver._process_sg_rule_notification(
                 resources.SECURITY_GROUP_RULE, events.BEFORE_DELETE, {},
                 security_group_rule=rule, context=self.context)
             ovn_acl_up.assert_called_once_with(
                 mock.ANY, mock.ANY, mock.ANY,
-                'sg_id', rule, is_add_acl=False)
+                'sg_id', rule, mock.ANY, is_add_acl=False)
             mock_delrev.assert_called_once_with(
                 mock.ANY, rule['id'], ovn_const.TYPE_SECURITY_GROUP_RULES)
 
@@ -2771,18 +2779,25 @@ class TestOVNMechanismDriverDHCPOptions(OVNMechanismDriverTestCase):
                                                      enable_dhcp=False)
 
 
-class TestOVNMechanismDriverSecurityGroup(
-        test_security_group.Ml2SecurityGroupsTestCase):
+class TestOVNMechanismDriverSecurityGroup(test_sg.SecurityGroupsTestCase):
     # This set of test cases is supplement to test_acl.py, the purpose is to
     # test acl methods invoking. Content correctness of args of acl methods
     # is mainly guaranteed by acl_test.py.
+
+    def _build_security_group(self, name, description, **kwargs):
+        data = super(
+            TestOVNMechanismDriverSecurityGroup,
+            self)._build_security_group(name, description, **kwargs)
+        if 'stateful' in kwargs:
+            data['security_group']['stateful'] = kwargs['stateful']
+        return data
 
     def setUp(self):
         cfg.CONF.set_override('mechanism_drivers',
                               ['logger', 'ovn'],
                               'ml2')
         cfg.CONF.set_override('dns_servers', ['8.8.8.8'], group='ovn')
-        super(TestOVNMechanismDriverSecurityGroup, self).setUp()
+        super(TestOVNMechanismDriverSecurityGroup, self).setUp('ml2')
         mm = directory.get_plugin().mechanism_manager
         self.mech_driver = mm.mech_drivers['ovn'].obj
         nb_ovn = fakes.FakeOvsdbNbOvnIdl()
@@ -2791,6 +2806,7 @@ class TestOVNMechanismDriverSecurityGroup(
         self.mech_driver._sb_ovn = sb_ovn
         self.mech_driver._ovn_client._qos_driver = mock.Mock()
         self.ctx = context.get_admin_context()
+        import ipdb; ipdb.set_trace()
         revision_plugin.RevisionPlugin()
 
     def _delete_default_sg_rules(self, security_group_id):
@@ -2800,8 +2816,8 @@ class TestOVNMechanismDriverSecurityGroup(
         for r in res['security_group_rules']:
             self._delete('security-group-rules', r['id'])
 
-    def _create_sg(self, sg_name):
-        sg = self._make_security_group(self.fmt, sg_name, '')
+    def _create_sg(self, sg_name, **kwargs):
+        sg = self._make_security_group(self.fmt, sg_name, '', **kwargs)
         return sg['security_group']
 
     def _create_empty_sg(self, sg_name):
@@ -2867,15 +2883,39 @@ class TestOVNMechanismDriverSecurityGroup(
             # Assert add_acl() is not used anymore
             self.assertFalse(self.mech_driver._nb_ovn.add_acl.called)
 
-    def test_create_port_with_sg_default_rules(self):
+    def _test_create_port_with_sg_default_rules(
+            self, stateful=None,
+            expected_acl_action=ovn_const.ACL_ACTION_ALLOW_RELATED):
         with self.network() as n, self.subnet(n):
             self.mech_driver._nb_ovn.pg_acl_add.reset_mock()
-            sg = self._create_sg('sg')
+            kwargs = {}
+            if stateful is not None:
+                kwargs['stateful'] = stateful
+            sg = self._create_sg('sg', **kwargs)
             self._make_port(self.fmt, n['network']['id'],
                             security_groups=[sg['id']])
             # egress traffic for ipv4 and ipv6 is allowed by default
             self.assertEqual(
                 2, self.mech_driver._nb_ovn.pg_acl_add.call_count)
+
+            # Make sure the ACLs were stateful by default
+            for call in self.mech_driver._nb_ovn.pg_acl_add.call_args_list:
+                self.assertEqual(
+                    expected_acl_action,
+                    call[1]['action'])
+
+    def test_create_port_with_sg_default_rules(self):
+        self._test_create_port_with_sg_default_rules()
+
+    def test_create_port_with_sg_stateful(self):
+        self._test_create_port_with_sg_default_rules(
+            stateful=True,
+            expected_acl_action=ovn_const.ACL_ACTION_ALLOW_RELATED)
+
+    def test_create_port_with_sg_stateless(self):
+        self._test_create_port_with_sg_default_rules(
+            stateful=False,
+            expected_acl_action=ovn_const.ACL_ACTION_ALLOW)
 
     def test_create_port_with_empty_sg(self):
         with self.network() as n, self.subnet(n):

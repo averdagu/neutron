@@ -49,6 +49,11 @@ ICMP_PROTOCOLS = (const.PROTO_NAME_ICMP,
                   PROTOCOL_NAME_TO_NUM_MAP[const.PROTO_NAME_IPV6_ICMP],
                   PROTOCOL_NAME_TO_NUM_MAP[const.PROTO_NAME_IPV6_ICMP_LEGACY])
 
+STATEFUL_RULE_ACTION = {
+    True: ovn_const.ACL_ACTION_ALLOW_RELATED,
+    False: ovn_const.ACL_ACTION_ALLOW,
+}
+
 
 class ProtocolNotSupported(n_exceptions.NeutronException):
     message = _('The protocol "%(protocol)s" is not supported. Valid '
@@ -184,12 +189,12 @@ def drop_all_ip_traffic_for_port(port):
     return acl_list
 
 
-def add_sg_rule_acl_for_port_group(port_group, r, match):
+def add_sg_rule_acl_for_port_group(port_group, r, match, stateful):
     dir_map = {const.INGRESS_DIRECTION: 'to-lport',
                const.EGRESS_DIRECTION: 'from-lport'}
     acl = {"port_group": port_group,
            "priority": ovn_const.ACL_PRIORITY_ALLOW,
-           "action": ovn_const.ACL_ACTION_ALLOW_RELATED,
+           "action": STATEFUL_RULE_ACTION[stateful],
            "log": False,
            "name": [],
            "severity": [],
@@ -278,7 +283,7 @@ def acl_remote_group_id(r, ip_version):
     return ' && %s.%s == $%s' % (ip_version, src_or_dst, addrset_name)
 
 
-def _add_sg_rule_acl_for_port_group(port_group, r):
+def _add_sg_rule_acl_for_port_group(port_group, r, stateful):
     # Update the match based on which direction this rule is for (ingress
     # or egress).
     match = acl_direction(r, port_group=port_group)
@@ -298,7 +303,7 @@ def _add_sg_rule_acl_for_port_group(port_group, r):
     match += acl_protocol_and_ports(r, icmp)
 
     # Finally, create the ACL entry for the direction specified.
-    return add_sg_rule_acl_for_port_group(port_group, r, match)
+    return add_sg_rule_acl_for_port_group(port_group, r, match, stateful)
 
 
 def _acl_columns_name_severity_supported(nb_idl):
@@ -309,7 +314,8 @@ def _acl_columns_name_severity_supported(nb_idl):
 def add_acls_for_sg_port_group(ovn, security_group, txn):
     for r in security_group['security_group_rules']:
         acl = _add_sg_rule_acl_for_port_group(
-            utils.ovn_port_group_name(security_group['id']), r)
+            utils.ovn_port_group_name(
+                security_group['id']), r, security_group.get('stateful', True))
         txn.add(ovn.pg_acl_add(**acl, may_exist=True))
 
 
@@ -318,6 +324,7 @@ def update_acls_for_security_group(plugin,
                                    ovn,
                                    security_group_id,
                                    security_group_rule,
+                                   stateful,
                                    is_add_acl=True):
 
     # Skip ACLs if security groups aren't enabled
@@ -329,7 +336,8 @@ def update_acls_for_security_group(plugin,
 
     acl = _add_sg_rule_acl_for_port_group(
         utils.ovn_port_group_name(security_group_id),
-        security_group_rule)
+        security_group_rule,
+        stateful)
     # Remove ACL log name and severity if not supported
     if is_add_acl:
         if not keep_name_severity:

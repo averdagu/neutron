@@ -41,6 +41,7 @@ from neutron.common.ovn import utils
 from neutron.conf.plugins.ml2.drivers.ovn import ovn_conf
 from neutron.db import ovn_revision_numbers_db as db_rev
 from neutron.db import segments_db
+from neutron.objects import securitygroup as sg_obj
 from neutron.plugins.ml2.drivers.ovn.mech_driver.ovsdb.extensions \
     import qos as qos_extension
 from neutron.scheduler import l3_ovn_scheduler
@@ -2024,9 +2025,11 @@ class OVNClient(object):
 
     def _process_security_group_rule(self, rule, is_add_acl=True):
         admin_context = n_context.get_admin_context()
+        stateful = sg_obj.SecurityGroup.get_sg_by_id(
+            admin_context, rule['security_group_id']).stateful
         ovn_acl.update_acls_for_security_group(
             self._plugin, admin_context, self._nb_idl,
-            rule['security_group_id'], rule, is_add_acl=is_add_acl)
+            rule['security_group_id'], rule, stateful, is_add_acl=is_add_acl)
 
     def create_security_group_rule(self, context, rule):
         self._process_security_group_rule(rule)
