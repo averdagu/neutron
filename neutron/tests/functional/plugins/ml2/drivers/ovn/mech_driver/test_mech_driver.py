@@ -17,6 +17,7 @@ from unittest import mock
 
 from neutron_lib.api.definitions import portbindings
 from neutron_lib import constants
+from neutron_lib.exceptions import agent as agent_exc
 from oslo_config import cfg
 from oslo_utils import uuidutils
 from ovsdbapp.tests.functional import base as ovs_base
@@ -745,22 +746,42 @@ class TestProvnetPorts(base.TestOVNFunctionalBase):
 
 
 class TestAgentApi(base.TestOVNFunctionalBase):
+    TEST_AGENT = 'test'
 
     def setUp(self):
         super().setUp()
-        self.host = 'test-host'
-        self.controller_agent = self.add_fake_chassis(self.host)
+        self.host = n_utils.get_rand_name(prefix='testhost-')
         self.plugin = self.mech_driver._plugin
-        agent = {'agent_type': 'test', 'binary': '/bin/test',
-                 'host': self.host, 'topic': 'test_topic'}
-        _, status = self.plugin.create_or_update_agent(self.context, agent)
-        self.test_agent = status['id']
         mock.patch.object(self.mech_driver, 'ping_all_chassis',
                           return_value=False).start()
 
-    def test_agent_show_non_ovn(self):
-        self.assertTrue(self.plugin.get_agent(self.context, self.test_agent))
+        metadata_agent_id = uuidutils.generate_uuid()
+        self.chassis = self.add_fake_chassis(self.host, external_ids={
+            ovn_const.OVN_AGENT_METADATA_ID_KEY: metadata_agent_id})
 
-    def test_agent_show_ovn_controller(self):
-        self.assertTrue(self.plugin.get_agent(self.context,
-                                              self.controller_agent))
+        self.agent_types = {
+            self.TEST_AGENT: self._create_test_agent(),
+            ovn_const.OVN_CONTROLLER_AGENT: self.chassis,
+            ovn_const.OVN_METADATA_AGENT: metadata_agent_id,
+        }
+
+    def _create_test_agent(self):
+        agent = {'agent_type': self.TEST_AGENT, 'binary': '/bin/test',
+                 'host': self.host, 'topic': 'test_topic'}
+        _, status = self.plugin.create_or_update_agent(self.context, agent)
+        return status['id']
+
+    def test_agent_show(self):
+        for _type, agent_id in self.agent_types.items():
+            self.assertTrue(self.plugin.get_agent(self.context, agent_id))
+
+    def test_agent_list(self):
+        agent_ids = [a['id'] for a in self.plugin.get_agents(
+            self.context, filters={'host': self.host})]
+        self.assertCountEqual(self.agent_types.values(), agent_ids)
+
+    def test_agent_delete(self):
+        for _type, agent_id in self.agent_types.items():
+            self.plugin.delete_agent(self.context, agent_id)
+            self.assertRaises(agent_exc.AgentNotFound, self.plugin.get_agent,
+                              self.context, agent_id)

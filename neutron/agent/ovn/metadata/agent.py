@@ -15,6 +15,7 @@
 import collections
 import functools
 import re
+import uuid
 
 from neutron.agent.linux import external_process
 from neutron.agent.linux import ip_lib
@@ -27,7 +28,6 @@ from neutron.conf.plugins.ml2.drivers.ovn import ovn_conf as config
 from neutron_lib import constants as n_const
 from oslo_concurrency import lockutils
 from oslo_log import log
-from oslo_utils import uuidutils
 from ovsdbapp.backend.ovs_idl import event as row_event
 from ovsdbapp.backend.ovs_idl import vlog
 
@@ -252,8 +252,10 @@ class MetadataAgent(object):
         # NOTE(lucasagomes): db_add() will not overwrite the UUID if
         # it's already set.
         table = ('Chassis_Private' if self.has_chassis_private else 'Chassis')
-        ext_ids = {
-            ovn_const.OVN_AGENT_METADATA_ID_KEY: uuidutils.generate_uuid()}
+        chassis_id = uuid.UUID(self._get_own_chassis_name())
+        # Generate unique, but consistent metadata id for chassis name
+        agent_id = uuid.uuid5(chassis_id, 'metadata_agent')
+        ext_ids = {ovn_const.OVN_AGENT_METADATA_ID_KEY: str(agent_id)}
         self.sb_idl.db_add(table, self.chassis, 'external_ids',
                            ext_ids).execute(check_error=True)
 
