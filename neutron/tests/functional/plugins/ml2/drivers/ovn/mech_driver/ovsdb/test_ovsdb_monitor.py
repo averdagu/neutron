@@ -212,7 +212,7 @@ class TestNBDbMonitor(base.TestOVNFunctionalBase):
                 hash_ring_group=ovn_const.HASH_RING_ML2_GROUP)
             _idl = ovsdb_monitor.OvnNbIdl.from_server(
                 self.ovsdb_server_mgr.get_ovsdb_connection_path(),
-                'OVN_Northbound', fake_driver)
+                self.nb_api.schema_helper(), fake_driver)
             worker = self.useFixture(
                 fixtures.OVNIdlConnectionFixture(
                     idl=_idl, timeout=10)).connection

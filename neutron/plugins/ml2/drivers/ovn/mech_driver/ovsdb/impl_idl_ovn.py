@@ -83,6 +83,28 @@ class Backend(ovs_idl.Backend):
 
     _tables = tables
 
+    @classmethod
+    def schema_helper(cls, connection_string):
+        # SchemaHelper.get_idl_schema() sets schema_json to None which is
+        # called in Idl.__init__(), so if we've done that return new helper
+        try:
+            if cls._schema_helper.schema_json:
+                return cls._schema_helper
+        except AttributeError:
+            pass
+
+        ovsdb_monitor._check_and_set_ssl_files(cls.schema)
+        cls._schema_helper = idlutils.get_schema_helper(connection_string,
+                                                        cls.schema)
+        return cls._schema_helper
+
+    @classmethod
+    def schema_has_table(cls, table_name):
+        # Note that schema_helper() is overriden by subclasses that provide the
+        # connection_string attribute
+        # pylint: disable=no-value-for-parameter
+        return table_name in cls.schema_helper().schema_json['tables']
+
     def is_table_present(self, table_name):
         return table_name in self._tables
 
@@ -146,8 +168,12 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
             cfg.get_ovn_ovsdb_probe_interval())
 
     @classmethod
+    def schema_helper(cls):
+        return super().schema_helper(cfg.get_ovn_nb_connection())
+
+    @classmethod
     def from_worker(cls, worker_class, driver=None):
-        args = (cfg.get_ovn_nb_connection(), 'OVN_Northbound')
+        args = (cfg.get_ovn_nb_connection(), cls.schema_helper())
         if worker_class == worker.MaintenanceWorker:
             idl_ = ovsdb_monitor.BaseOvnIdl.from_server(*args)
         else:
@@ -743,8 +769,12 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             cfg.get_ovn_ovsdb_probe_interval())
 
     @classmethod
+    def schema_helper(cls):
+        return super().schema_helper(cfg.get_ovn_sb_connection())
+
+    @classmethod
     def from_worker(cls, worker_class, driver=None):
-        args = (cfg.get_ovn_sb_connection(), 'OVN_Southbound')
+        args = (cfg.get_ovn_sb_connection(), cls.schema_helper())
         if worker_class == worker.MaintenanceWorker:
             idl_ = ovsdb_monitor.BaseOvnSbIdl.from_server(*args)
         else:
