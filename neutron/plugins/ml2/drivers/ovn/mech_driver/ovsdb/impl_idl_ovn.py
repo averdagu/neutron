@@ -93,10 +93,16 @@ class Backend(ovs_idl.Backend):
         except AttributeError:
             pass
 
+        cls.set_schema_helper()
+
+        return cls._schema_helper
+
+    @classmethod
+    def set_schema_helper(cls, connection_string):
+        LOG.debug("YYY set schema helper")
         ovsdb_monitor._check_and_set_ssl_files(cls.schema)
         cls._schema_helper = idlutils.get_schema_helper(connection_string,
                                                         cls.schema)
-        return cls._schema_helper
 
     @classmethod
     def schema_has_table(cls, table_name):
@@ -170,6 +176,10 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
     @classmethod
     def schema_helper(cls):
         return super().schema_helper(cfg.get_ovn_nb_connection())
+
+    @classmethod
+    def set_schema_helper(cls):
+        return super().set_schema_helper(cfg.get_ovn_nb_connection())
 
     @classmethod
     def from_worker(cls, worker_class, driver=None):
@@ -771,6 +781,10 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
     @classmethod
     def schema_helper(cls):
         return super().schema_helper(cfg.get_ovn_sb_connection())
+
+    @classmethod
+    def set_schema_helper(cls):
+        return super().set_schema_helper(cfg.get_ovn_sb_connection())
 
     @classmethod
     def from_worker(cls, worker_class, driver=None):

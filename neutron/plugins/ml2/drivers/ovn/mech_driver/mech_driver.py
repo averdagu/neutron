@@ -124,12 +124,14 @@ class OVNMechanismDriver(api.MechanismDriver):
         self.qos_driver = qos_driver.OVNQosDriver.create(self)
         self.trunk_driver = trunk_driver.OVNTrunkDriver.create(self)
 
-    @property
-    def nb_schema_helper(self):
+    def get_nb_schema_helper(self, reset=False):
+        if reset:
+            impl_idl_ovn.OvsdbNbOvnIdl.set_schema_helper()
         return impl_idl_ovn.OvsdbNbOvnIdl.schema_helper()
 
-    @property
-    def sb_schema_helper(self):
+    def get_sb_schema_helper(self, reset=False):
+        if reset:
+            impl_idl_ovn.OvsdbSbOvnIdl.set_schema_helper()
         return impl_idl_ovn.OvsdbSbOvnIdl.schema_helper()
 
     @property
@@ -243,7 +245,9 @@ class OVNMechanismDriver(api.MechanismDriver):
         otherwise the error is something else and it's raised to the caller.
         """
         idl = ovsdb_monitor.OvnInitPGNbIdl.from_server(
-            ovn_conf.get_ovn_nb_connection(), self.nb_schema_helper, self)
+            ovn_conf.get_ovn_nb_connection(),
+            self.get_nb_schema_helper(),
+            self)
         with ovsdb_monitor.short_living_ovsdb_api(
                 impl_idl_ovn.OvsdbNbOvnIdl, idl) as pre_ovn_nb_api:
             try:
@@ -328,7 +332,9 @@ class OVNMechanismDriver(api.MechanismDriver):
                is available to the IDL.
         """
         idl = ovsdb_monitor.OvnInitPGNbIdl.from_server(
-            ovn_conf.get_ovn_nb_connection(), self.nb_schema_helper, self,
+            ovn_conf.get_ovn_nb_connection(),
+            self.get_nb_schema_helper(),
+            self,
             pg_only=True)
         with ovsdb_monitor.short_living_ovsdb_api(
                 impl_idl_ovn.OvsdbNbOvnIdl, idl) as ovn_nb_api:

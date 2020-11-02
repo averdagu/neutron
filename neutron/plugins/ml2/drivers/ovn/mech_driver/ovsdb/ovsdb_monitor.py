@@ -269,6 +269,7 @@ class ChassisAgentWriteEvent(ChassisAgentEvent):
         return event == self.ROW_CREATE or getattr(old, 'nb_cfg', False)
 
     def run(self, event, row, old):
+        LOG.debug("ZZZ got an agent write event on table %s" % self.table)
         n_agent.AgentCache().update(ovn_const.OVN_CONTROLLER_AGENT, row,
                                     clear_down=event == self.ROW_CREATE)
 
@@ -443,6 +444,77 @@ class NeutronPgDropPortGroupCreated(row_event.WaitEvent):
         super(NeutronPgDropPortGroupCreated, self).__init__(
             events, table, conditions)
         self.event_name = 'PortGroupCreated'
+
+
+class OVNDBConnectionEvent(row_event.RowEvent):
+    """Event listening to connections from OVN any DB.
+
+    This event exists to add a new table to the schema of a DB. Typically that
+    happens during updates of OVN DB while mechanism driver is running.
+    """
+    GLOBAL = True
+    _tables_to_add = []
+
+    def __init__(self, idl, driver):
+        self.idl = idl
+        self.driver = driver
+        table = 'Connection'
+        events = (self.ROW_CREATE,)
+        super(OVNDBConnectionEvent, self).__init__(events, table, None)
+        self.event_name = self.__class__.__name__
+
+    def _initialize_schema_table(self, table):
+        """Initialize table of the Schema instance."""
+        # This code is copied from OVS code:
+        # https://github.com/openvswitch/ovs/blob/21005175b68b64b6b7f205ee34d2d5cbdb8ead22/python/ovs/db/idl.py#L172-L180
+        from ovs.db import custom_index
+        for column in table.columns.values():
+            if not hasattr(column, 'alert'):
+                column.alert = True
+        table.need_table = False
+        table.rows = custom_index.IndexedRows(table)
+        table.idl = self
+        table.condition = [True]
+        table.cond_changed = False
+
+    def _get_schema_helper(self):
+        pass
+
+    def _add_table_to_schema(self, table_to_add, helper):
+        LOG.debug("YYY it is in the schema")
+        helper.register_table(table_to_add)
+        schema = helper.get_idl_schema()
+        if table_to_add not in self.idl.tables:
+            LOG.info(
+                "YYY Detected Chassis_Private table in new OVN database "
+                "schema. Adding Chassis_Private table to the schema helper"
+                " and changing agent API to use the new table."
+            )
+            new_table = schema.tables[table_to_add]
+            self.initialize_schema_table(new_table)
+            self.idl.tables[table_to_add] = new_table
+        else:
+            LOG.debug("YYY it's already in the tables")
+
+    def run(self, event, row, old):
+        LOG.debug("YYY checking chassis private in schema")
+        helper = self._get_schema_helper()
+        for table_to_add in self._tables_to_add:
+            if table_to_add in helper.schema_json['tables']:
+                self._add_table_to_schema(table_to_add, helper)
+
+
+class OVNSBConnectionEvent(OVNDBConnectionEvent):
+    _tables_to_add = ["Chassis_Private"]
+
+    def _get_schema_helper(self):
+        args = (ovn_conf.get_ovn_sb_connection(), 'OVN_Southbound')
+        return self.driver.get_sb_schema_helper(reset=True)
+
+    def run(self, event, row, old):
+        super().run(event, row, old)
+        LOG.debug("YYY Setting chasssi_Private in the driver")
+#        self.driver.agent_chassis_table = 'Chassis_Private'
 
 
 class OvnDbNotifyHandler(row_event.RowEventHandler):
@@ -628,7 +700,9 @@ class OvnSbIdl(OvnIdlDistributedLock):
             ChassisAgentDeleteEvent(self.driver),
             ChassisAgentDownEvent(self.driver),
             ChassisAgentWriteEvent(self.driver),
-            ChassisMetadataAgentWriteEvent(self.driver)])
+            ChassisMetadataAgentWriteEvent(self.driver),
+            OVNDBConnectionEvent(self, driver),
+        ])
 
     @classmethod
     def from_server(cls, connection_string, helper, driver):
@@ -640,6 +714,8 @@ class OvnSbIdl(OvnIdlDistributedLock):
         helper.register_table('Datapath_Binding')
         helper.register_table('MAC_Binding')
         helper.register_columns('SB_Global', ['external_ids'])
+        helper.register_table('Connection')
+
         return cls(driver, connection_string, helper)
 
     def post_connect(self):
