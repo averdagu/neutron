@@ -39,6 +39,7 @@
   with_items:
       - "^.*openstack-tripleo-heat-templates.*ovs.*yaml"
       - ".*neutron-sriov.yaml.*"
+      - ".*os-net-config-mappings.yaml"
   when: infrared_deployment|bool
 
 - name: Set container images environment file
