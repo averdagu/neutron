@@ -120,6 +120,12 @@ class Backend(ovs_idl.Backend):
     def schema_has_table(cls, table_name):
         return table_name in cls.schema_helper.schema_json['tables']
 
+    @classmethod
+    def schema_has_column(cls, table_name, col_name):
+        return cls.schema_has_table(table_name) and (
+            col_name in
+            cls.schema_helper.schema_json['tables'][table_name]['columns'])
+
     def is_table_present(self, table_name):
         return table_name in self._tables
 
@@ -162,6 +168,8 @@ class OvsdbConnectionUnavailable(n_exc.ServiceUnavailable):
 # each retry, up to 'max_interval' seconds, then interval will be fixed
 # to 'max_interval' seconds afterwards. The default 'max_interval' is 180.
 def get_ovn_idls(driver, trigger):
+    sb_schema_has_up_column = OvsdbSbOvnIdl.schema_has_column(
+        'Port_Binding', 'up')
     @tenacity.retry(
         wait=tenacity.wait_exponential(
             max=cfg.get_ovn_ovsdb_retry_max_interval()),
@@ -170,7 +178,8 @@ def get_ovn_idls(driver, trigger):
         trigger_class = utils.get_method_class(trigger)
         LOG.info('Getting %(cls)s for %(trigger)s with retry',
                  {'cls': api_cls.__name__, 'trigger': trigger_class.__name__})
-        return api_cls.from_worker(trigger_class, driver)
+        return api_cls.from_worker(
+            trigger_class, driver, sb_schema_has_up_column)
 
     vlog.use_python_logger(max_level=cfg.get_ovn_ovsdb_log_level())
     return tuple(get_ovn_idl_retry(c) for c in (OvsdbNbOvnIdl, OvsdbSbOvnIdl))
@@ -185,12 +194,13 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
         return cfg.get_ovn_nb_connection()
 
     @classmethod
-    def from_worker(cls, worker_class, driver=None):
+    def from_worker(cls, worker_class, driver=None, sb_up_column=False):
         args = (cls.connection_string, cls.schema_helper)
         if worker_class == worker.MaintenanceWorker:
             idl_ = ovsdb_monitor.BaseOvnIdl.from_server(*args)
         else:
-            idl_ = ovsdb_monitor.OvnNbIdl.from_server(*args, driver=driver)
+            idl_ = ovsdb_monitor.OvnNbIdl.from_server(
+                *args, driver=driver, sb_up_column=sb_up_column)
         conn = connection.Connection(idl_, timeout=cfg.get_ovn_ovsdb_timeout())
         return cls(conn)
 
@@ -768,12 +778,13 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         return cfg.get_ovn_sb_connection()
 
     @classmethod
-    def from_worker(cls, worker_class, driver=None):
+    def from_worker(cls, worker_class, driver=None, sb_up_column=False):
         args = (cls.connection_string, cls.schema_helper)
         if worker_class == worker.MaintenanceWorker:
             idl_ = ovsdb_monitor.BaseOvnSbIdl.from_server(*args)
         else:
-            idl_ = ovsdb_monitor.OvnSbIdl.from_server(*args, driver=driver)
+            idl_ = ovsdb_monitor.OvnSbIdl.from_server(
+                *args, driver=driver, sb_up_column=sb_up_column)
         conn = connection.Connection(idl_, timeout=cfg.get_ovn_ovsdb_timeout())
         return cls(conn)
 

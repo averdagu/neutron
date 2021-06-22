@@ -343,6 +343,85 @@ class PortBindingChassisEvent(row_event.RowEvent):
             router, host)
 
 
+class PortBindingCreateUpEvent(row_event.RowEvent):
+    """Row create event - Port_Binding 'up' = True.
+
+    On connection, we get a dump of all ports, so if there is a neutron
+    port that is down that has since been activated, we'll catch it here.
+    This event will not be generated for new ports getting created.
+    """
+
+    def __init__(self, driver):
+        self.driver = driver
+        table = 'Port_Binding'
+        events = (self.ROW_CREATE,)
+        super().__init__(
+            events, table, (('up', '=', True), ('type', '=', ''),))
+        self.event_name = 'PortBindingCreateUpEvent'
+
+    def run(self, event, row, old):
+        self.driver.set_port_status_up(row.logical_port)
+
+
+class PortBindingCreateDownEvent(row_event.RowEvent):
+    """Row create event - Port_Binding 'up' = False
+
+    On connection, we get a dump of all ports, so if there is a neutron
+    port that is up that has since been deactivated, we'll catch it here.
+    This event will not be generated for new ports getting created.
+    """
+    def __init__(self, driver):
+        self.driver = driver
+        table = 'Port_Binding'
+        events = (self.ROW_CREATE,)
+        super().__init__(
+            events, table, (('up', '=', False), ('type', '=', ''),))
+        self.event_name = 'PortBindingCreateDownEvent'
+
+    def run(self, event, row, old):
+        self.driver.set_port_status_down(row.logical_port)
+
+
+class PortBindingUpdateUpEvent(row_event.RowEvent):
+    """Row update event - Port_Binding 'up' going from False to True
+
+    This happens when the VM goes up.
+    New value of Port_Binding 'up' will be True and the old value will
+    be False.
+    """
+    def __init__(self, driver):
+        self.driver = driver
+        table = 'Port_Binding'
+        events = (self.ROW_UPDATE,)
+        super().__init__(
+            events, table, (('up', '=', True), ('type', '=', '')),
+            old_conditions=(('up', '=', False),))
+        self.event_name = 'PortBindingUpdateUpEvent'
+
+    def run(self, event, row, old):
+        self.driver.set_port_status_up(row.logical_port)
+
+
+class PortBindingUpdateDownEvent(row_event.RowEvent):
+    """Row update event - Port_Binding 'up' going from True to False
+
+    This happens when the VM goes down.
+    New value of Port_Binding 'up' will be False and the old value will
+    be True.
+    """
+    def __init__(self, driver):
+        self.driver = driver
+        table = 'Port_Binding'
+        events = (self.ROW_UPDATE,)
+        super().__init__(
+            events, table, (('up', '=', False), ('type', '=', '""')),
+            old_conditions=(('up', '=', True),))
+        self.event_name = 'PortBindingUpdateDownEvent'
+
+    def run(self, event, row, old):
+        self.driver.set_port_status_down(row.logical_port)
+
+
 class LogicalSwitchPortCreateUpEvent(row_event.RowEvent):
     """Row create event - Logical_Switch_Port 'up' = True.
 
@@ -620,25 +699,33 @@ class OvnIdlDistributedLock(BaseOvnIdl):
 
 class OvnNbIdl(OvnIdlDistributedLock):
 
-    def __init__(self, driver, remote, schema):
+    def __init__(self, driver, remote, schema, sb_up_column=False):
+        # TODO(jlibosva): Remove sb_up_column in future release 
         super(OvnNbIdl, self).__init__(driver, remote, schema)
-        self._lsp_update_up_event = LogicalSwitchPortUpdateUpEvent(driver)
-        self._lsp_update_down_event = LogicalSwitchPortUpdateDownEvent(driver)
-        self._lsp_create_up_event = LogicalSwitchPortCreateUpEvent(driver)
-        self._lsp_create_down_event = LogicalSwitchPortCreateDownEvent(driver)
-        self._fip_create_delete_event = FIPAddDeleteEvent(driver)
+        fip_create_delete_event = FIPAddDeleteEvent(driver)
 
-        self.notify_handler.watch_events([self._lsp_create_up_event,
-                                          self._lsp_create_down_event,
-                                          self._lsp_update_up_event,
-                                          self._lsp_update_down_event,
-                                          self._fip_create_delete_event])
+        events = [fip_create_delete_event]
+
+        if not sb_up_column:
+            LOG.debug("Southbound schema does not implement 'up' column, "
+                      "monitoring Logical_Switch_Port table for changes in "
+                      "'up' column in the Northbound database.")
+            lsp_update_up_event = LogicalSwitchPortUpdateUpEvent(driver)
+            lsp_update_down_event = LogicalSwitchPortUpdateDownEvent(driver)
+            lsp_create_up_event = LogicalSwitchPortCreateUpEvent(driver)
+            lsp_create_down_event = LogicalSwitchPortCreateDownEvent(driver)
+
+            events.extend([lsp_update_up_event, lsp_update_down_event,
+                           lsp_create_up_event, lsp_create_down_event])
+
+        self.notify_handler.watch_events(events)
 
     @classmethod
-    def from_server(cls, connection_string, helper, driver):
+    def from_server(
+            cls, connection_string, helper, driver, sb_up_column=False):
 
         helper.register_all()
-        return cls(driver, connection_string, helper)
+        return cls(driver, connection_string, helper, sb_up_column)
 
     def unwatch_logical_switch_port_create_events(self):
         """Unwatch the logical switch port create events.
@@ -660,16 +747,29 @@ class OvnNbIdl(OvnIdlDistributedLock):
 
 class OvnSbIdl(OvnIdlDistributedLock):
 
-    def __init__(self, driver, remote, schema):
+    def __init__(self, driver, remote, schema, sb_up_column=False):
         super(OvnSbIdl, self).__init__(driver, remote, schema)
-        self.notify_handler.watch_events([
+        events = [
             ChassisAgentDeleteEvent(self.driver),
             ChassisAgentDownEvent(self.driver),
             ChassisAgentWriteEvent(self.driver),
-            ChassisMetadataAgentWriteEvent(self.driver)])
+            ChassisMetadataAgentWriteEvent(self.driver)]
+
+        if sb_up_column:
+            LOG.debug("Southbound schema implements 'up' column, monitoring "
+                      "Port_Binding table for changes in 'up' column in the "
+                      "Southbound database.")
+            events.extend([
+                PortBindingCreateUpEvent(self.driver),
+                PortBindingCreateDownEvent(self.driver),
+                PortBindingUpdateUpEvent(self.driver),
+                PortBindingUpdateDownEvent(self.driver),
+            ])
+        self.notify_handler.watch_events(events)
 
     @classmethod
-    def from_server(cls, connection_string, helper, driver):
+    def from_server(
+            cls, connection_string, helper, driver, sb_up_column=False):
         if 'Chassis_Private' in helper.schema_json['tables']:
             helper.register_table('Chassis_Private')
         if 'FDB' in helper.schema_json['tables']:
@@ -680,7 +780,7 @@ class OvnSbIdl(OvnIdlDistributedLock):
         helper.register_table('Datapath_Binding')
         helper.register_table('MAC_Binding')
         helper.register_columns('SB_Global', ['external_ids'])
-        return cls(driver, connection_string, helper)
+        return cls(driver, connection_string, helper, sb_up_column)
 
     def post_connect(self):
         """Watch Chassis events.
