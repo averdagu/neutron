@@ -251,38 +251,25 @@ class OVNMechanismDriver(api.MechanismDriver):
         """Pre-initialize the ML2/OVN driver."""
         atexit.register(self._clean_hash_ring)
         signal.signal(signal.SIGTERM, self._clean_hash_ring)
-        self._create_neutron_pg_drop()
 
-    def _create_neutron_pg_drop(self):
+    def _create_neutron_pg_drop(self, nb_idl):
         """Create neutron_pg_drop Port Group.
-
-        The method creates a short living connection to the Northbound
-        database. Because of multiple controllers can attempt to create the
-        Port Group at the same time the transaction can fail and raise
-        RuntimeError. In such case, we make sure the Port Group was created,
-        otherwise the error is something else and it's raised to the caller.
         """
-        idl = ovsdb_monitor.OvnInitPGNbIdl.from_server(
-            ovn_conf.get_ovn_nb_connection(), self.nb_schema_helper, self)
-        # Only one server should try to create the port group
-        idl.set_lock('pg_drop_creation')
-        with ovsdb_monitor.short_living_ovsdb_api(
-                impl_idl_ovn.OvsdbNbOvnIdl, idl) as pre_ovn_nb_api:
-            try:
-                create_default_drop_port_group(pre_ovn_nb_api)
-            except RuntimeError as re:
-                # If we don't get the lock, and the port group didn't exist
-                # when we tried to create it, it might still have been
-                # created by another server and we just haven't gotten the
-                # update yet.
-                LOG.info("Waiting for Port Group %(pg)s to be created",
-                         {'pg': ovn_const.OVN_DROP_PORT_GROUP_NAME})
-                if not idl.neutron_pg_drop_event.wait():
-                    LOG.error("Port Group %(pg)s was not created in time",
-                              {'pg': ovn_const.OVN_DROP_PORT_GROUP_NAME})
-                    raise re
-                LOG.info("Porg Group %(pg)s was created by another server",
-                         {'pg': ovn_const.OVN_DROP_PORT_GROUP_NAME})
+        try:
+            create_default_drop_port_group(nb_idl)
+        except RuntimeError as rerror:
+            # If we don't get the lock, and the port group didn't exist
+            # when we tried to create it, it might still have been
+            # created by another server and we just haven't gotten the
+            # update yet.
+            LOG.info("XXX Waiting for Port Group %(pg)s to be created",
+                     {'pg': ovn_const.OVN_DROP_PORT_GROUP_NAME})
+            if not nb_idl.idl.neutron_pg_drop_event.wait():
+                LOG.error("XXX Port Group %(pg)s was not created in time",
+                          {'pg': ovn_const.OVN_DROP_PORT_GROUP_NAME})
+                raise rerror
+            LOG.info("XXX Port Group %(pg)s was created by another server",
+                     {'pg': ovn_const.OVN_DROP_PORT_GROUP_NAME})
 
     @staticmethod
     def should_post_fork_initialize(worker_class):
@@ -306,6 +293,11 @@ class OVNMechanismDriver(api.MechanismDriver):
 
         n_agent.AgentCache(self)  # Initialize singleton agent cache
         self.nb_ovn, self.sb_ovn = impl_idl_ovn.get_ovn_idls(self, trigger)
+
+
+        if worker_class != worker.MaintenanceWorker:
+            # Create neutron_pg_drop PG before processing ovsdb events
+            self._create_neutron_pg_drop(self._nb_ovn)
 
         # Override agents API methods
         self.patch_plugin_merge("get_agents", get_agents)
@@ -1222,23 +1214,28 @@ def delete_agent(self, context, id, _driver=None):
 def create_default_drop_port_group(nb_idl):
     pg_name = ovn_const.OVN_DROP_PORT_GROUP_NAME
     if nb_idl.get_port_group(pg_name):
-        LOG.debug("Port Group %s already exists", pg_name)
+        LOG.debug("XXX Port Group %s already exists", pg_name)
         return
-    with nb_idl.transaction(check_error=True) as txn:
-        # If drop Port Group doesn't exist yet, create it.
-        txn.add(nb_idl.pg_add(pg_name, acls=[], may_exist=True))
-        # Add ACLs to this Port Group so that all traffic is dropped.
-        acls = ovn_acl.add_acls_for_drop_port_group(pg_name)
-        for acl in acls:
-            txn.add(nb_idl.pg_acl_add(may_exist=True, **acl))
+    try:
+        nb_idl.idl.set_lock("neutron_pg_drop")
+        if not nb_idl.idl.is_lock_contended:
+            with nb_idl.transaction(check_error=True, log_errors=False) as txn:
+                # If drop Port Group doesn't exist yet, create it.
+                txn.add(nb_idl.pg_add(pg_name, acls=[], may_exist=True))
+                # Add ACLs to this Port Group so that all traffic is dropped.
+                acls = ovn_acl.add_acls_for_drop_port_group(pg_name)
+                for acl in acls:
+                    txn.add(nb_idl.pg_acl_add(may_exist=True, **acl))
 
-        ports_with_pg = set()
-        for pg in nb_idl.get_sg_port_groups().values():
-            ports_with_pg.update(pg['ports'])
+                ports_with_pg = set()
+                for pg in nb_idl.get_sg_port_groups().values():
+                    ports_with_pg.update(pg['ports'])
 
-        if ports_with_pg:
-            # Add the ports to the default Port Group
-            txn.add(nb_idl.pg_add_ports(pg_name, list(ports_with_pg)))
+                if ports_with_pg:
+                    # Add the ports to the default Port Group
+                    txn.add(nb_idl.pg_add_ports(pg_name, list(ports_with_pg)))
+    finally:
+        nb_idl.idl.set_lock(None)
 
 
 def get_availability_zones(cls, context, _driver, filters=None, fields=None,

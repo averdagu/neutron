@@ -442,9 +442,12 @@ class FIPAddDeleteEvent(row_event.RowEvent):
         # https://mail.openvswitch.org/pipermail/ovs-discuss/2018-October/047604.html
         self.driver.delete_mac_binding_entries(row.external_ip)
 
+        LOG.debug("ZZZ notify %s %s %s %s", event, row, updates, global_)
 
 class NeutronPgDropPortGroupCreated(row_event.WaitEvent):
     """WaitEvent for neutron_pg_drop Create event."""
+    GLOBAL = True
+
     def __init__(self, timeout=None):
         table = 'Port_Group'
         events = (self.ROW_CREATE,)
@@ -452,6 +455,11 @@ class NeutronPgDropPortGroupCreated(row_event.WaitEvent):
         super(NeutronPgDropPortGroupCreated, self).__init__(
             events, table, conditions, timeout=timeout)
         self.event_name = 'PortGroupCreated'
+
+    def run(self, event, row, old):
+        LOG.debug("YYY running pg drop event")
+        super().run(event, row, old)
+        LOG.debug("YYY event set")
 
 
 class OvnDbNotifyHandler(row_event.RowEventHandler):
@@ -466,8 +474,11 @@ class OvnDbNotifyHandler(row_event.RowEventHandler):
 
     def notify(self, event, row, updates=None, global_=False):
         row = idlutils.frozen_row(row)
+        LOG.debug("ZZZ notify in DB handler")
         matching = self.matching_events(event, row, updates, global_)
+        LOG.debug("ZZZ matching: %s", matching)
         for match in matching:
+            LOG.debug("ZZZ putting match: %s", match)
             self.notifications.put((match, event, row, updates))
 
     def matching_events(self, event, row, updates, global_=False):
@@ -507,25 +518,6 @@ class BaseOvnSbIdl(Ml2OvnIdlBase):
         helper.register_table('Port_Binding')
         helper.register_table('Datapath_Binding')
         return cls(connection_string, helper)
-
-
-class OvnIdl(BaseOvnIdl):
-
-    def __init__(self, driver, remote, schema):
-        super(OvnIdl, self).__init__(remote, schema)
-        self.driver = driver
-        self.notify_handler = OvnDbNotifyHandler(driver)
-
-    def notify(self, event, row, updates=None):
-        # Do not handle the notification if the event lock is requested,
-        # but not granted by the ovsdb-server.
-        if self.is_lock_contended:
-            return
-        self.notify_handler.notify(event, row, updates)
-
-    @abc.abstractmethod
-    def post_connect(self):
-        """Should be called after the idl has been initialized"""
 
 
 class OvnIdlDistributedLock(BaseOvnIdl):
@@ -609,12 +601,14 @@ class OvnNbIdl(OvnIdlDistributedLock):
         self._lsp_create_up_event = LogicalSwitchPortCreateUpEvent(driver)
         self._lsp_create_down_event = LogicalSwitchPortCreateDownEvent(driver)
         self._fip_create_delete_event = FIPAddDeleteEvent(driver)
+        self.neutron_pg_drop_event = NeutronPgDropPortGroupCreated(timeout=60)
 
         self.notify_handler.watch_events([self._lsp_create_up_event,
                                           self._lsp_create_down_event,
                                           self._lsp_update_up_event,
                                           self._lsp_update_down_event,
-                                          self._fip_create_delete_event])
+                                          self._fip_create_delete_event,
+                                          self.neutron_pg_drop_event])
 
     @classmethod
     def from_server(cls, connection_string, helper, driver):
@@ -677,40 +671,6 @@ class OvnSbIdl(OvnIdlDistributedLock):
         self.notify_handler.watch_events(
             [self._chassis_event, self._portbinding_event,
              PortBindingChassisUpdateEvent(self.driver)])
-
-
-class OvnInitPGNbIdl(OvnIdl):
-    """Very limited OVN NB IDL.
-
-    This IDL is intended to be used only in initialization phase with short
-    living DB connections.
-    """
-
-    tables = ['Port_Group', 'Logical_Switch_Port', 'ACL']
-
-    def __init__(self, driver, remote, schema):
-        super(OvnInitPGNbIdl, self).__init__(driver, remote, schema)
-        self.cond_change(
-            'Port_Group',
-            [['name', '==', ovn_const.OVN_DROP_PORT_GROUP_NAME]])
-        self.neutron_pg_drop_event = NeutronPgDropPortGroupCreated(
-                timeout=ovn_conf.get_ovn_ovsdb_timeout())
-        self.notify_handler.watch_event(self.neutron_pg_drop_event)
-
-    def notify(self, event, row, updates=None):
-        # Go ahead and process events even if the lock is contended so we can
-        # know that some other server has created the drop group
-        self.notify_handler.notify(event, row, updates)
-
-    @classmethod
-    def from_server(cls, connection_string, helper, driver, pg_only=False):
-        if pg_only:
-            helper.register_table('Port_Group')
-        else:
-            for table in cls.tables:
-                helper.register_table(table)
-
-        return cls(driver, connection_string, helper)
 
 
 @contextlib.contextmanager
