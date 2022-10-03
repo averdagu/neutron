@@ -37,7 +37,6 @@ from neutron_lib.placement import utils as place_utils
 from neutron_lib.plugins import directory
 from neutron_lib.plugins.ml2 import api
 from neutron_lib.utils import helpers
-from oslo_concurrency import processutils
 from oslo_config import cfg
 from oslo_db import exception as os_db_exc
 from oslo_log import log
@@ -287,47 +286,7 @@ class OVNMechanismDriver(api.MechanismDriver):
         """Pre-initialize the ML2/OVN driver."""
         atexit.register(self._clean_hash_ring)
         signal.signal(signal.SIGTERM, self._clean_hash_ring)
-        self._create_neutron_pg_drop()
-
-    def _create_neutron_pg_drop(self):
-        """Create neutron_pg_drop Port Group.
-
-        The method creates a short living connection to the Northbound
-        database. Because of multiple controllers can attempt to create the
-        Port Group at the same time the transaction can fail and raise
-        RuntimeError. In such case, we make sure the Port Group was created,
-        otherwise the error is something else and it's raised to the caller.
-        """
-        idl = ovsdb_monitor.OvnInitPGNbIdl.from_server(
-            ovn_conf.get_ovn_nb_connection(), self.nb_schema_helper, self)
-        # Only one server should try to create the port group
-        idl.set_lock('pg_drop_creation')
-        with ovsdb_monitor.short_living_ovsdb_api(
-                impl_idl_ovn.OvsdbNbOvnIdl, idl) as pre_ovn_nb_api:
-            try:
-                create_default_drop_port_group(pre_ovn_nb_api)
-            except KeyError:
-                # Due to a bug in python-ovs, we can send transactions before
-                # the initial OVSDB is populated in memory. This can break
-                # the AddCommand post_commit method which tries to return a
-                # row looked up by the newly commited row's uuid. Since we
-                # don't care about the return value from the PgAddCommand, we
-                # can just catch the KeyError and continue. This can be
-                # removed when the python-ovs bug is resolved.
-                pass
-            except RuntimeError as re:
-                # If we don't get the lock, and the port group didn't exist
-                # when we tried to create it, it might still have been
-                # created by another server and we just haven't gotten the
-                # update yet.
-                LOG.info("Waiting for Port Group %(pg)s to be created",
-                         {'pg': ovn_const.OVN_DROP_PORT_GROUP_NAME})
-                if not idl.neutron_pg_drop_event.wait():
-                    LOG.error("Port Group %(pg)s was not created in time",
-                              {'pg': ovn_const.OVN_DROP_PORT_GROUP_NAME})
-                    raise re
-                LOG.info("Porg Group %(pg)s was created by another server",
-                         {'pg': ovn_const.OVN_DROP_PORT_GROUP_NAME})
+        ovn_utils.create_neutron_pg_drop()
 
     @staticmethod
     def should_post_fork_initialize(worker_class):
@@ -1178,19 +1137,17 @@ class OVNMechanismDriver(api.MechanismDriver):
 
     def delete_mac_binding_entries(self, external_ip):
         """Delete all MAC_Binding entries associated to this IP address"""
-        cmd = ['ovsdb-client', 'transact', ovn_conf.get_ovn_sb_connection(),
-               '--timeout', str(ovn_conf.get_ovn_ovsdb_timeout())]
+        cmd = [
+            "OVN_Southbound", {
+                "op": "delete",
+                "table": "MAC_Binding",
+                "where": [
+                    ["ip", "==", external_ip]
+                ]
+            }
+        ]
 
-        if ovn_conf.get_ovn_sb_private_key():
-            cmd += ['-p', ovn_conf.get_ovn_sb_private_key(), '-c',
-                    ovn_conf.get_ovn_sb_certificate(), '-C',
-                    ovn_conf.get_ovn_sb_ca_cert()]
-
-        cmd += ['["OVN_Southbound", {"op": "delete", "table": "MAC_Binding", '
-                '"where": [["ip", "==", "%s"]]}]' % external_ip]
-
-        return processutils.execute(*cmd,
-                                    log_errors=processutils.LOG_FINAL_ERROR)
+        return ovn_utils.OvsdbClientTransactCommand.run(cmd)
 
     def update_segment_host_mapping(self, host, phy_nets):
         """Update SegmentHostMapping in DB"""

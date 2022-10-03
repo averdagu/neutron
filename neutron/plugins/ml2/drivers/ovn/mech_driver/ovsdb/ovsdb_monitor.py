@@ -870,23 +870,6 @@ class OvnInitPGNbIdl(OvnIdl):
         return cls(driver, connection_string, helper)
 
 
-@contextlib.contextmanager
-def short_living_ovsdb_api(api_class, idl):
-    """Context manager for short living connections to the database.
-
-    :param api_class: Class implementing the database calls
-                      (e.g. from the impl_idl module)
-    :param idl: An instance of IDL class (e.g. instance of OvnNbIdl)
-    """
-    conn = connection.Connection(
-        idl, timeout=ovn_conf.get_ovn_ovsdb_timeout())
-    api = api_class(conn)
-    try:
-        yield api
-    finally:
-        api.ovsdb_connection.stop()
-
-
 def _check_and_set_ssl_files(schema_name):
     if schema_name == 'OVN_Southbound':
         priv_key_file = ovn_conf.get_ovn_sb_private_key()
