@@ -1,0 +1,10 @@
+---
+- name: backup controllers
+  hosts: localhost
+  roles:
+    - recovery-backup
+
+- name: backup future ovn-controller nodes
+  hosts: ovn-controllers
+  roles:
+    - backup-ovn-controllers

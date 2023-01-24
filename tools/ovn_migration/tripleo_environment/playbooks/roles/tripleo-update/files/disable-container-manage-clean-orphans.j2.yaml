@@ -1,0 +1,9 @@
+# Disable removing orphans for all roles
+
+parameter_defaults:
+  # This section is where deployment-specific configuration is done
+  #
+{%- for role in roles %}
+  {{role.name}}ExtraGroupVars:
+    tripleo_container_manage_clean_orphans: false
+{%- endfor %}

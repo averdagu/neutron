@@ -1,0 +1,12 @@
+---
+
+- name: install OVN with the TripleO
+  hosts: localhost
+  roles:
+    - tripleo-update
+  become: false
+
+- name: sync dbs
+  hosts: neutron-api
+  roles:
+    - sync-dbs

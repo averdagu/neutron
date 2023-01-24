@@ -27,21 +27,15 @@ LANG=C
 : ${OVERCLOUDRC_FILE:=~/overcloudrc}
 
 # overcloud deploy script for OVN migration.
-: ${OVERCLOUD_OVN_DEPLOY_SCRIPT:=~/overcloud-deploy-ovn.sh}
+: ${OVERCLOUD_OVN_DEPLOY_SCRIPT:=~/overcloud-migrate-ovn.sh}
 
 # user on the nodes in the undercloud
-: ${UNDERCLOUD_NODE_USER:=heat-admin}
+: ${UNDERCLOUD_NODE_USER:=tripleo-admin}
 
 : ${OPT_WORKDIR:=$PWD}
 : ${STACK_NAME:=overcloud}
 : ${OOO_WORKDIR:=$HOME/overcloud-deploy}
-: ${PUBLIC_NETWORK_NAME:=public}
-: ${IMAGE_NAME:=cirros}
-: ${FLAVOR_NAME:=ovn-migration}
-: ${SERVER_USER_NAME:=cirros}
-: ${VALIDATE_MIGRATION:=False}
 : ${DHCP_RENEWAL_TIME:=30}
-: ${CREATE_BACKUP:=True}
 : ${BACKUP_MIGRATION_IP:=192.168.24.1} # TODO: Document this new var
 
 
@@ -101,17 +95,6 @@ check_for_necessary_files() {
         fi
         exit 1
     fi
-    # Check if backup is enabled
-    if [[ $CREATE_BACKUP = True ]]; then
-        # Check if backup server is reachable
-        ping -c4 $BACKUP_MIGRATION_IP
-        if [[ $? -eq 1 ]]; then
-            echo -e "It is not possible to reach the backup migration server IP" \
-                    "($BACKUP_MIGRATION_IP). Make sure this IP is accessible before" \
-                    "starting the migration." \
-                    "Change this value by doing: export BACKUP_MIGRATION_IP=x.x.x.x"
-        fi
-    fi
 }
 
 get_host_ip() {
@@ -168,9 +151,9 @@ generate_ansible_inventory_file() {
     local inventory_file="$OOO_WORKDIR/$STACK_NAME/config-download/$STACK_NAME/tripleo-ansible-inventory.yaml"
 
     echo "Generating the inventory file for ansible-playbook"
-    echo "[ovn-dbs]"  > hosts_for_migration
+    echo "[neutron-api]"  > hosts_for_migration
     ovn_central=True
-    # We want to run ovn_dbs where neutron_api is running
+
     OVN_DBS=$(get_group_hosts "$inventory_file" neutron_api)
     for node_name in $OVN_DBS; do
         node_ip=$(get_host_ip "$inventory_file" $node_name)
@@ -209,7 +192,7 @@ dhcp
 
 [overcloud:children]
 ovn-controllers
-ovn-dbs
+neutron-api
 
 EOF
     add_group_vars() {
@@ -217,14 +200,7 @@ EOF
     cat >> hosts_for_migration << EOF
 
 [$1:vars]
-remote_user=$UNDERCLOUD_NODE_USER
-public_network_name=$PUBLIC_NETWORK_NAME
-image_name=$IMAGE_NAME
-flavor_name=$FLAVOR_NAME
 working_dir=$OPT_WORKDIR
-server_user_name=$SERVER_USER_NAME
-validate_migration=$VALIDATE_MIGRATION
-overcloud_ovn_deploy_script=$OVERCLOUD_OVN_DEPLOY_SCRIPT
 overcloudrc=$OVERCLOUDRC_FILE
 ovn_migration_backups=/var/lib/ovn-migration-backup
 EOF
@@ -249,29 +225,6 @@ function check_source_inventory {
         echo "       via STACK_NAME and OOO_WORKDIR environment variables."
         exit 1
     fi
-}
-
-# Check if the public network exists, and if it has floating ips available
-
-oc_check_public_network() {
-
-    [ "$VALIDATE_MIGRATION" != "True" ] && return 0
-    source $OVERCLOUDRC_FILE
-    openstack network show $PUBLIC_NETWORK_NAME 1>/dev/null || {
-        echo "ERROR: PUBLIC_NETWORK_NAME=${PUBLIC_NETWORK_NAME} can't be accessed by the"
-        echo "       admin user, please fix that before continuing."
-        exit 1
-    }
-
-    ID=$(openstack floating ip create $PUBLIC_NETWORK_NAME -c id -f value) || {
-        echo "ERROR: PUBLIC_NETWORK_NAME=${PUBLIC_NETWORK_NAME} doesn't have available"
-        echo "       floating ips. Make sure that your public network has at least one"
-        echo "       floating ip available for the admin user."
-        exit 1
-    }
-
-    openstack floating ip delete $ID 2>/dev/null 1>/dev/null
-    return $?
 }
 
 
@@ -310,27 +263,56 @@ reduce_network_mtu () {
     return $rc
 }
 
-start_migration() {
-    source $STACKRC_FILE
-    echo "Starting the Migration"
-    local inventory_file="$OOO_WORKDIR/$STACK_NAME/config-download/$STACK_NAME/tripleo-ansible-inventory.yaml"
-    if ! test -f $inventory_file; then
-        inventory_file=''
+backup() {
+    # Check if backup server is reachable
+    ping -c4 $BACKUP_MIGRATION_IP
+    if [[ $? -eq 1 ]]; then
+        echo -e "It is not possible to reach the backup migration server IP" \
+                "($BACKUP_MIGRATION_IP). Make sure this IP is accessible before" \
+                "starting the migration." \
+                "Change this value by doing: export BACKUP_MIGRATION_IP=x.x.x.x"
+        exit 2
     fi
-    ansible-playbook  -vv $OPT_WORKDIR/playbooks/ovn-migration.yml \
-    -i hosts_for_migration -e working_dir=$OPT_WORKDIR \
-    -e public_network_name=$PUBLIC_NETWORK_NAME \
-    -e image_name=$IMAGE_NAME \
-    -e flavor_name=$FLAVOR_NAME \
-    -e undercloud_node_user=$UNDERCLOUD_NODE_USER \
-    -e overcloud_ovn_deploy_script=$OVERCLOUD_OVN_DEPLOY_SCRIPT \
-    -e server_user_name=$SERVER_USER_NAME \
-    -e overcloudrc=$OVERCLOUDRC_FILE \
-    -e stackrc=$STACKRC_FILE \
-    -e backup_migration_ip=$BACKUP_MIGRATION_IP \
-    -e create_backup=$CREATE_BACKUP \
-    -e ansible_inventory=$inventory_file \
-    -e validate_migration=$VALIDATE_MIGRATION $*
+    ansible-playbook -vv $OPT_WORKDIR/playbooks/backup.yml \
+         -i hosts_for_migration \
+         -e working_dir=$OPT_WORKDIR \
+         -e backup_migration_ip=$BACKUP_MIGRATION_IP \
+         -e undercloud_node_user=$UNDERCLOUD_NODE_USER \
+         -e overcloudrc=$OVERCLOUDRC_FILE \
+         -e stackrc=$STACKRC_FILE \
+         -e ansible_inventory=$inventory_file
+
+    rc=$?
+    return $rc
+}
+
+install_ovn() {
+    ansible-playbook -vv $OPT_WORKDIR/playbooks/install-ovn.yml \
+    -i hosts_for_migration \
+    -e working_dir=$OPT_WORKDIR \
+    -e overcloud_ovn_deploy_script=$OVERCLOUD_OVN_DEPLOY_SCRIPT
+
+    rc=$?
+    return $rc
+}
+
+activate_ovn() {
+    local batch_name=$1
+    ansible-playbook -vv $OPT_WORKDIR/playbooks/activate-ovn.yml -e batch_name=$batch_name
+
+    rc=$?
+    return $rc
+}
+
+revert_ovn() {
+    ansible-playbook -vv $OPT_WORKDIR/playbooks/revert-ovn.yml
+
+    rc=$?
+    return $rc
+}
+
+cleanup_ovs() {
+    ansible-playbook -vv $OPT_WORKDIR/playbooks/cleanup-ovs.yml
 
     rc=$?
     return $rc
@@ -366,10 +348,7 @@ complete details. This script needs to be run in 5 steps.
            Reduces the MTU of the neutron tenant networks networks. This
            step is only necessary for VXLAN or GRE based tenant networking.
 
- Step 5 -> ovn_migration.sh start-migration
-
-           Starts the migration to OVN.
-
+ Step 5 -> TODO: Document it
 EOF
 
 }
@@ -380,7 +359,6 @@ ret_val=0
 case $command in
     generate-inventory)
         check_source_inventory
-        oc_check_public_network
         generate_ansible_inventory_file
         generate_ansible_config_file
         ret_val=$?
@@ -391,23 +369,40 @@ case $command in
             echo -e "Warning: setup-mtu-t1 argument was renamed."\
                     "Use reduce-dhcp-t1 argument instead."
         fi
-        check_for_necessary_files
         reduce_dhcp_t1
-        ret_val=$?;;
-
-    reduce-mtu)
-        check_for_necessary_files
-        reduce_network_mtu
-        ret_val=$?;;
-
-    start-migration)
-        oc_check_public_network
-        check_for_necessary_files
-        shift
-        start_migration $*
         ret_val=$?
         ;;
 
+    reduce-mtu)
+        reduce_network_mtu
+        ret_val=$?
+        ;;
+
+    backup)
+        backup
+        ret_val=$?
+        ;;
+
+    install-ovn)
+        check_for_necessary_files
+        install_ovn
+        ret_val=$?
+        ;;
+
+    activate-ovn)
+        activate_ovn
+        ret_val=$?
+        ;;
+
+    revert-ovn)
+        revert_ovn
+        ret_val=$?
+        ;;
+
+    cleanup-ovs)
+        cleanup_ovs
+        ret_val=$?
+        ;;
     *)
         print_usage;;
 esac

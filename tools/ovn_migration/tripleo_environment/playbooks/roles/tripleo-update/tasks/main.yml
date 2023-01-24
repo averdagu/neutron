@@ -18,6 +18,12 @@
   args:
     creates: $HOME/ovn-extras.yaml
 
+- name: set to not clean orphaned services
+  copy:
+    src: disable-container-manage-clean-orphans.j2.yaml
+    dest: /usr/share/openstack-tripleo-heat-templates/environments/disable-container-manage-clean-orphans.j2.yaml
+  become: yes
+
 - name: Updating the overcloud stack with OVN services
   shell: >
     set -o pipefail &&
