@@ -1,5 +1,9 @@
 ---
-- include_tasks: clone-dataplane.yml
+- name: backup bridge mappings
+  shell: |
+    ovs-vsctl set open . external_ids:ovn-bridge-mappings-back=$(ovs-vsctl get open . external_ids:ovn-bridge-mappings)
+    ovs-vsctl remove open . external_ids ovn-bridge-mappings
+  when: ovn_controller is defined
 
 - include_tasks: sync-dbs.yml
 

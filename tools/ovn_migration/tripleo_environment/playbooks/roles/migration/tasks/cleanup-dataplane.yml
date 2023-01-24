@@ -1,4 +1,16 @@
 ---
+- name: cleanup ml2 ovs patch ports
+  shell: |
+    ovn_bms=$(ovs-vsctl get open . external_ids:ovn-bridge-mappings | tr -d '"')
+    for bm in $ovn_bms; do
+      patch_port=$(ovs-vsctl find interface type=patch options:peer=phy-$(echo $bm | cut -d : -f 2) | awk '/^name /{ print $3 }')
+      if [ "x$patch_port" != "x" ] ; then
+        patch_peer=$(ovs-vsctl find interface type=patch options:peer=$patch_port | awk '/^name /{ print $3 }')
+        ovs-vsctl del-port $patch_port
+        ovs-vsctl del-port $patch_peer
+      fi
+    done
+
 - name: Cleanup neutron router and dhcp interfaces
   shell: |
     ovs-vsctl list interface | awk '/name[ ]*: qr-|ha-|qg-|rfp-|sg-|fg-/ { print $3 }' | xargs -n1 ovs-vsctl del-port
