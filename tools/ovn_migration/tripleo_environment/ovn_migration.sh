@@ -298,7 +298,9 @@ install_ovn() {
 
 activate_ovn() {
     local batch_name=$1
-    ansible-playbook -vv $OPT_WORKDIR/playbooks/activate-ovn.yml -e batch_name=$batch_name
+    ansible-playbook -vv $OPT_WORKDIR/playbooks/activate-ovn.yml \
+    -i hosts_for_migration \
+    -e batch_name=$batch_name
 
     rc=$?
     return $rc
@@ -390,7 +392,7 @@ case $command in
         ;;
 
     activate-ovn)
-        activate_ovn
+        activate_ovn $2
         ret_val=$?
         ;;
 

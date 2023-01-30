@@ -1,5 +1,4 @@
 ---
-# vars file for stop-agents
 ml2_ovs_services:
   - name: dhcp
     service_file: tripleo_neutron_dhcp.service

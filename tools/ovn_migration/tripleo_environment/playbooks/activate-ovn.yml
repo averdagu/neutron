@@ -1,5 +1,5 @@
 ---
 - name: "Activate OVN on the batch {{ batch_name }}"
   hosts: "{{ batch_name }}"
-
-
+  roles:
+    - activate-ovn
