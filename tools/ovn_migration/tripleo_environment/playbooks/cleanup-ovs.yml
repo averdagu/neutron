@@ -1,0 +1,10 @@
+---
+- name: cleanup ml2/OVS agents services
+  hosts: ovn-controllers
+  roles:
+    - cleanup
+
+- name: cleanup Neutron ml2/OVS resources
+  hosts: localhost
+  roles:
+    - delete-neutron-resources
