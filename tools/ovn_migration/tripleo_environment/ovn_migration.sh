@@ -314,7 +314,9 @@ revert_ovn() {
 }
 
 cleanup_ovs() {
-    ansible-playbook -vv $ANSIBLE_DIR/playbooks/cleanup-ovs.yml
+    ansible-playbook -vv $ANSIBLE_DIR/playbooks/cleanup-ovs.yml \
+    -i hosts_for_migration \
+    -e overcloudrc=$OVERCLOUDRC_FILE
 
     rc=$?
     return $rc
