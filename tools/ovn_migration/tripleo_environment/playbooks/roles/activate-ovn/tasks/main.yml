@@ -18,11 +18,3 @@
 - name: Reload systemctl daemons
   systemd:
     daemon_reload: yes
-
-- name: remove containers
-  become: yes
-  shell: |
-    for agent in $(podman ps -a --format {% raw %}"{{.ID}}"{% endraw %} --filter "name=(neutron_.*_agent|neutron_dhcp)"); do
-        echo "Cleaning up agent $agent"
-        podman rm -f $agent
-    done

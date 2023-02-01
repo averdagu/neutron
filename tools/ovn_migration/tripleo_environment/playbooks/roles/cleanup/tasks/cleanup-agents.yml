@@ -9,3 +9,11 @@
     - "{{ service.healthcheck_service_file }}"
     - "{{ service.healthcheck_timer_file }}"
   become: yes
+
+- name: remove agent containers
+  become: yes
+  shell: |
+    for agent in $(podman ps -a --format {% raw %}"{{.ID}}"{% endraw %} --filter "name=(neutron_.*_agent|neutron_dhcp)"); do
+        echo "Cleaning up agent $agent"
+        podman rm -f $agent
+    done
