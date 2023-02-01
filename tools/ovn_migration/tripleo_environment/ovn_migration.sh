@@ -295,6 +295,9 @@ install_ovn() {
 
 activate_ovn() {
     local batch_name=$1
+    if [ "x$batch_name" == "x" ]; then
+        batch_name=ovn-controllers
+    fi
     ansible-playbook -vv $ANSIBLE_DIR/playbooks/activate-ovn.yml \
     -i hosts_for_migration \
     -e batch_name=$batch_name
