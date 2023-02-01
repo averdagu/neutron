@@ -32,7 +32,7 @@ LANG=C
 # user on the nodes in the undercloud
 : ${UNDERCLOUD_NODE_USER:=tripleo-admin}
 
-: ${OPT_WORKDIR:=$PWD}
+: ${ANSIBLE_DIR:=/usr/share/ansible/neutron-migration}
 : ${STACK_NAME:=overcloud}
 : ${OOO_WORKDIR:=$HOME/overcloud-deploy}
 : ${DHCP_RENEWAL_TIME:=30}
@@ -238,7 +238,7 @@ oc_check_network_mtu() {
 reduce_dhcp_t1() {
     # Run the ansible playbook to reduce the DHCP T1 parameter in
     # dhcp_agent.ini in all the overcloud nodes where dhcp agent is running.
-    ansible-playbook  -vv $OPT_WORKDIR/playbooks/reduce-dhcp-renewal-time.yml \
+    ansible-playbook  -vv $ANSIBLE_DIR/playbooks/reduce-dhcp-renewal-time.yml \
         -i hosts_for_migration \
         -e renewal_time=$DHCP_RENEWAL_TIME
     rc=$?
@@ -272,7 +272,7 @@ backup() {
                 "Change this value by doing: export BACKUP_MIGRATION_IP=x.x.x.x"
         exit 2
     fi
-    ansible-playbook -vv $OPT_WORKDIR/playbooks/backup.yml \
+    ansible-playbook -vv $ANSIBLE_DIR/playbooks/backup.yml \
          -i hosts_for_migration \
          -e backup_migration_ip=$BACKUP_MIGRATION_IP \
          -e undercloud_node_user=$UNDERCLOUD_NODE_USER \
@@ -285,7 +285,7 @@ backup() {
 }
 
 install_ovn() {
-    ansible-playbook -vv $OPT_WORKDIR/playbooks/install-ovn.yml \
+    ansible-playbook -vv $ANSIBLE_DIR/playbooks/install-ovn.yml \
     -i hosts_for_migration \
     -e overcloud_ovn_deploy_script=$OVERCLOUD_OVN_DEPLOY_SCRIPT
 
@@ -295,7 +295,7 @@ install_ovn() {
 
 activate_ovn() {
     local batch_name=$1
-    ansible-playbook -vv $OPT_WORKDIR/playbooks/activate-ovn.yml \
+    ansible-playbook -vv $ANSIBLE_DIR/playbooks/activate-ovn.yml \
     -i hosts_for_migration \
     -e batch_name=$batch_name
 
@@ -304,14 +304,14 @@ activate_ovn() {
 }
 
 revert_ovn() {
-    ansible-playbook -vv $OPT_WORKDIR/playbooks/revert-ovn.yml
+    ansible-playbook -vv $ANSIBLE_DIR/playbooks/revert-ovn.yml
 
     rc=$?
     return $rc
 }
 
 cleanup_ovs() {
-    ansible-playbook -vv $OPT_WORKDIR/playbooks/cleanup-ovs.yml
+    ansible-playbook -vv $ANSIBLE_DIR/playbooks/cleanup-ovs.yml
 
     rc=$?
     return $rc
