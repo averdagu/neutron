@@ -1,21 +1,17 @@
 ---
-- name: Delete temp file directory if present
-  file:
-    state: absent
-    path: "{{ ovn_migration_temp_dir_del }}"
-
-- name : Create temp file directory if not present
-  file:
+- name : Create temp file directory
+  ansible.builtin.tempfile:
     state: directory
-    path: "{{ ovn_migration_temp_dir_del }}"
+    prefix: ovn-migration.
+  register: temp_dir
 
 - name: Generate neutron resources cleanup script
   template:
     src: "delete-neutron-resources.sh.j2"
-    dest: "{{ ovn_migration_temp_dir_del }}/delete-neutron-resources.sh"
-    mode: 0744
+    dest: "{{ temp_dir.path }}/delete-neutron-resources.sh"
+    mode: 0644
 
 - name: Deleting the neutron agents
   shell: >
-    {{ ovn_migration_temp_dir_del }}/delete-neutron-resources.sh 2>&1 >
-    {{ ovn_migration_temp_dir_del }}/delete-neutron-resources.sh.log
+    sh {{ temp_dir.path }}/delete-neutron-resources.sh 2>&1 >
+    {{ temp_dir.path }}/delete-neutron-resources.sh.log

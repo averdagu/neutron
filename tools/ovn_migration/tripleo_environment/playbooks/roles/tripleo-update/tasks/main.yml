@@ -1,24 +1,25 @@
 ---
 
-- name : Create temp file directory if not present
-  file:
+- name : Create temp directory
+  ansible.builtin.tempfile:
     state: directory
-    path: "{{ ovn_migration_temp_dir }}"
+    prefix: ovn-migration.
+  register: temp_dir
 
 - name: Create ovn-extras generation script
   template:
-    src: "{{ generate_ovn_extras }}"
-    dest: "{{ ovn_migration_temp_dir }}/generate-ovn-extras.sh"
-    mode: 0755
+    src: "generate-ovn-extras.sh.j2"
+    dest: "{{ temp_dir.path }}/generate-ovn-extras.sh"
+    mode: 0644
 
 - name: Generate ovn-extras environment file
   shell: >
     set -o pipefail &&
-    {{ ovn_migration_temp_dir }}/generate-ovn-extras.sh
+    sh {{ temp_dir.path }}/generate-ovn-extras.sh
   args:
     creates: $HOME/ovn-extras.yaml
 
-- name: set to not clean orphaned services
+- name: Set to not clean orphaned services
   copy:
     src: disable-container-manage-clean-orphans.j2.yaml
     dest: /usr/share/openstack-tripleo-heat-templates/environments/disable-container-manage-clean-orphans.j2.yaml

@@ -200,7 +200,6 @@ EOF
     cat >> hosts_for_migration << EOF
 
 [$1:vars]
-working_dir=$OPT_WORKDIR
 overcloudrc=$OVERCLOUDRC_FILE
 ovn_migration_backups=/var/lib/ovn-migration-backup
 EOF
@@ -240,7 +239,7 @@ reduce_dhcp_t1() {
     # Run the ansible playbook to reduce the DHCP T1 parameter in
     # dhcp_agent.ini in all the overcloud nodes where dhcp agent is running.
     ansible-playbook  -vv $OPT_WORKDIR/playbooks/reduce-dhcp-renewal-time.yml \
-        -i hosts_for_migration -e working_dir=$OPT_WORKDIR \
+        -i hosts_for_migration \
         -e renewal_time=$DHCP_RENEWAL_TIME
     rc=$?
     return $rc
@@ -275,7 +274,6 @@ backup() {
     fi
     ansible-playbook -vv $OPT_WORKDIR/playbooks/backup.yml \
          -i hosts_for_migration \
-         -e working_dir=$OPT_WORKDIR \
          -e backup_migration_ip=$BACKUP_MIGRATION_IP \
          -e undercloud_node_user=$UNDERCLOUD_NODE_USER \
          -e overcloudrc=$OVERCLOUDRC_FILE \
@@ -289,7 +287,6 @@ backup() {
 install_ovn() {
     ansible-playbook -vv $OPT_WORKDIR/playbooks/install-ovn.yml \
     -i hosts_for_migration \
-    -e working_dir=$OPT_WORKDIR \
     -e overcloud_ovn_deploy_script=$OVERCLOUD_OVN_DEPLOY_SCRIPT
 
     rc=$?
