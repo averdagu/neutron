@@ -1,0 +1,5 @@
+---
+- name: "Revert batch {{ batch_name }} to OVS"
+  hosts: "{{ batch_name }}"
+  roles:
+    - revert-to-ovs

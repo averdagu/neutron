@@ -307,7 +307,13 @@ activate_ovn() {
 }
 
 revert_ovn() {
-    ansible-playbook -vv $ANSIBLE_DIR/playbooks/revert-ovn.yml
+    local batch_name=$1
+    if [ "x$batch_name" == "x" ]; then
+        batch_name=ovn-controllers
+    fi
+    ansible-playbook -vv $ANSIBLE_DIR/playbooks/revert-ovn.yml \
+    -i hosts_for_migration \
+    -e batch_name=$batch_name
 
     rc=$?
     return $rc
@@ -399,7 +405,7 @@ case $command in
         ;;
 
     revert-ovn)
-        revert_ovn
+        revert_ovn $2
         ret_val=$?
         ;;
 

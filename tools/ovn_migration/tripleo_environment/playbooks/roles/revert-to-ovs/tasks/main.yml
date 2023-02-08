@@ -1,0 +1,23 @@
+---
+- name: populate service facts
+  service_facts:
+
+- include_tasks: deactivate-ovn.yml
+  when: ovn_controller is defined
+
+- name: Enabled ml2 ovs services and healthchecks
+  include_tasks: enable-agents.yml
+  loop: "{{ ml2_ovs_services }}"
+  loop_control:
+    loop_var: service
+  when: ansible_facts.services[service.service_file] is defined
+
+- name: Reload systemctl daemons
+  systemd:
+    daemon_reload: yes
+
+- name: delete geneve tunnel interfaces
+  shell: |
+    for iface in $(ovs-vsctl find interface type=geneve | awk '/name /{ print $3 }'); do
+        ovs-vsctl del-port $iface
+    done

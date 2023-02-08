@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -x
+
+ovn_bms=$(ovs-vsctl get open . external_ids:ovn-bridge-mappings | tr -d '"')
+
+# backup bridge mappings
+ovs-vsctl set open . external_ids:ovn-bridge-mappings-back="$ovn_bms"
+ovs-vsctl remove open . external_ids ovn-bridge-mappings
+
+ovs-vsctl --may-exist add-br br-migration
+
+# Tell ovn-controller to use br-migration
+ovs-vsctl set open . external_ids:ovn-bridge=br-migration
+
+exit 0
