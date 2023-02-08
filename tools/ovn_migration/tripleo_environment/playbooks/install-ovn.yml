@@ -10,3 +10,18 @@
   hosts: neutron-api
   roles:
     - sync-dbs
+
+- name: stop and disable OVN services ovn-controllers
+  hosts: ovn-controllers
+  tasks:
+    - name: "stop and disable {{ item }}"
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: no
+      when:
+        - ansible_facts.services[item] is defined
+        - ansible_facts.services[item]["status"] != "not-found"
+      loop:
+        - tripleo_ovn_controller.service
+        - tripleo_ovn_metadata_agent.service

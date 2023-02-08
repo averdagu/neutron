@@ -2,6 +2,18 @@
 - name: populate service facts
   service_facts:
 
+- name: "stop and disable {{ item }}"
+  systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: no
+  when:
+    - ansible_facts.services[item] is defined
+    - ansible_facts.services[item]["status"] != "not-found"
+  loop:
+    - tripleo_ovn_controller.service
+    - tripleo_ovn_metadata_agent.service
+
 - include_tasks: deactivate-ovn.yml
   when: ovn_controller is defined
 
@@ -12,12 +24,12 @@
     loop_var: service
   when: ansible_facts.services[service.service_file] is defined
 
-- name: Reload systemctl daemons
-  systemd:
-    daemon_reload: yes
-
 - name: delete geneve tunnel interfaces
   shell: |
     for iface in $(ovs-vsctl find interface type=geneve | awk '/name /{ print $3 }'); do
         ovs-vsctl del-port $iface
     done
+
+- name: Reload systemctl daemons
+  systemd:
+    daemon_reload: yes

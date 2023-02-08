@@ -2,18 +2,30 @@
 - name: populate service facts
   service_facts:
 
-- include_tasks: activate-ovn.yml
-  when: ovn_controller is defined
-
-- include_tasks: cleanup-dataplane.yml
-  when: ovn_controller is defined
-
 - name: disable ml2 ovs services and healthchecks
   include_tasks: cleanup-agents.yml
   loop: "{{ ml2_ovs_services }}"
   loop_control:
     loop_var: service
   when: ansible_facts.services[service.service_file] is defined
+
+- include_tasks: activate-ovn.yml
+  when: ovn_controller is defined
+
+- name: "start and enable {{ item }}"
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  when:
+    - ansible_facts.services[item] is defined
+    - ansible_facts.services[item]["status"] != "not-found"
+  loop:
+    - tripleo_ovn_controller.service
+    - tripleo_ovn_metadata_agent.service
+
+- include_tasks: cleanup-dataplane.yml
+  when: ovn_controller is defined
 
 - name: Reload systemctl daemons
   systemd:
