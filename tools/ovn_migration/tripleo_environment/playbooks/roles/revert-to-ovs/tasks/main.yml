@@ -22,13 +22,9 @@
   loop: "{{ ml2_ovs_services }}"
   loop_control:
     loop_var: service
-  when: ansible_facts.services[service.service_file] is defined
-
-- name: delete geneve tunnel interfaces
-  shell: |
-    for iface in $(ovs-vsctl find interface type=geneve | awk '/name /{ print $3 }'); do
-        ovs-vsctl del-port $iface
-    done
+  when:
+    - ansible_facts.services[service.service_file] is defined
+    - ansible_facts.services[service.service_file]["status"] != "not-found"
 
 - name: Reload systemctl daemons
   systemd:
