@@ -11,8 +11,8 @@
 
 - name: sync neutron db with OVN db
   command: podman run --name {{ ovn_db_sync_container }}
-    -v /var/log/containers/neutron:/var/log/neutron:Z
-    -v /var/lib/config-data/puppet-generated/neutron/etc/neutron:/etc/neutron:Z
+    -v /var/log/containers/neutron:/var/log/neutron
+    -v /var/lib/config-data/puppet-generated/neutron/etc/neutron:/etc/neutron
     --privileged=True --network host --user root
     {{ neutron_server_image.stdout }}
     neutron-ovn-db-sync-util --config-file /etc/neutron/neutron.conf
@@ -24,12 +24,6 @@
 
 - name: remove db-sync container
   command: podman rm -f {{ ovn_db_sync_container }}
-  when: ovn_central is defined
-
-- name: Restore SELinux user that was changed by podman run
-  shell: |
-    semanage fcontext -m -s unconfined_u -t container_file_t "/var/lib/config-data/puppet-generated/neutron/etc/neutron(/.*)?"
-    restorecon -R -F -v /var/lib/config-data/puppet-generated/neutron/etc/neutron
   when: ovn_central is defined
 
 - name: start neutron_api containers
