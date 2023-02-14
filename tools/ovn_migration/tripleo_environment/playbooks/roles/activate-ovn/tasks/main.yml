@@ -33,7 +33,3 @@
 
 - include_tasks: cleanup-dataplane.yml
   when: ovn_controller is defined
-
-- name: Reload systemctl daemons
-  systemd:
-    daemon_reload: yes

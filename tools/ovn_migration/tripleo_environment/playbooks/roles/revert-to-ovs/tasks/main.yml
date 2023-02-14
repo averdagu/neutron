@@ -25,7 +25,3 @@
   when:
     - ansible_facts.services[service.service_file] is defined
     - ansible_facts.services[service.service_file]["status"] != "not-found"
-
-- name: Reload systemctl daemons
-  systemd:
-    daemon_reload: yes
