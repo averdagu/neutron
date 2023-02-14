@@ -9,9 +9,6 @@
     loop_var: service
   when: ansible_facts.services[service.service_file] is defined
 
-- include_tasks: activate-ovn.yml
-  when: ovn_controller is defined
-
 - name: "start and enable {{ item }}"
   systemd:
     name: "{{ item }}"
@@ -23,6 +20,16 @@
   loop:
     - tripleo_ovn_controller.service
     - tripleo_ovn_metadata_agent.service
+
+- name: wait for flows
+  shell: "[ $(ovs-ofctl dump-flows br-migration | wc -l) -gt 2 ]"
+  register: flows_installed
+  until: flows_installed.rc == 0
+  retries: 60
+  delay: 5
+
+- include_tasks: activate-ovn.yml
+  when: ovn_controller is defined
 
 - include_tasks: cleanup-dataplane.yml
   when: ovn_controller is defined
