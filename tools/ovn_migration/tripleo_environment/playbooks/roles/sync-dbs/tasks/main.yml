@@ -9,10 +9,30 @@
   register: neutron_server_image
   when: ovn_central is defined
 
+- name: check if is enabled
+  ansible.builtin.shell: grep -q '^\s*ovn_nb_connection=ssl:' /var/lib/config-data/puppet-generated/neutron/etc/neutron/plugins/ml2/ml2_conf.ini
+  register: tls_enabled
+  when: ovn_central is defined
+  ignore_errors: yes
+
+- name: get Internal TLS CA file
+  ansible.builtin.shell: awk -F = '/^\s*ovn_nb_ca_cert/{ print $2 }' /var/lib/config-data/puppet-generated/neutron/etc/neutron/plugins/ml2/ml2_conf.ini
+  register: internal_ca
+  when:
+    - ovn_central is defined
+    - tls_enabled.rc == 0
+  ignore_errors: yes
+
 - name: sync neutron db with OVN db
   command: podman run --name {{ ovn_db_sync_container }}
     -v /var/log/containers/neutron:/var/log/neutron
     -v /var/lib/config-data/puppet-generated/neutron/etc/neutron:/etc/neutron
+    -v /etc/my.cnf.d/:/etc/my.cnf.d
+    {% if tls_enabled.rc == 0 %}
+    -v /etc/pki/tls/private/neutron_ovn.key:/etc/pki/tls/private/neutron_ovn.key
+    -v /etc/pki/tls/certs/neutron_ovn.crt:/etc/pki/tls/certs/neutron_ovn.crt
+    -v {{ internal_ca.stdout }}:{{ internal_ca.stdout }}
+    {% endif %}
     --privileged=True --network host --user root
     {{ neutron_server_image.stdout }}
     neutron-ovn-db-sync-util --config-file /etc/neutron/neutron.conf
