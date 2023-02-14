@@ -16,6 +16,9 @@ ovs-vsctl set open . external_ids:ovn-bridge=br-migration
 for iface in $(ovs-vsctl find interface type=geneve | awk '/name /{ print $3 }'); do
     ovs-vsctl del-port $iface
 done
+for iface in $(ovs-vsctl find interface type=patch | awk '/^name .*provnet/{ print $3 }'); do
+    ovs-vsctl del-port $iface
+done
 ovs-ofctl del-flows br-int
 
 exit 0
