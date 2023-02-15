@@ -10,7 +10,7 @@
   register: neutron_server_image
   when: ovn_central is defined
 
-- name: check if is enabled
+- name: check if TLS is enabled
   ansible.builtin.shell: grep -q '^\s*ovn_nb_connection=ssl:' /var/lib/config-data/puppet-generated/neutron/etc/neutron/plugins/ml2/ml2_conf.ini
   register: tls_enabled
   when: ovn_central is defined
