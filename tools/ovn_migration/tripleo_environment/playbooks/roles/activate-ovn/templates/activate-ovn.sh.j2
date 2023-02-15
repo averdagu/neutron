@@ -10,7 +10,7 @@ ovn_bms=$(ovs-vsctl get open . external_ids:ovn-bridge-mappings-back | tr -d '"'
 OIFS=$IFS
 IFS=,
 for bm in $ovn_bms; do
-   bridge=$(echo $bm | cut -d : -f 1)
+   bridge=$(echo $bm | cut -d : -f 2)
    ovs-vsctl set-fail-mode $bridge standalone
    ovs-vsctl set Bridge $bridge protocols=[]
    ovs-vsctl del-controller $bridge
@@ -22,7 +22,7 @@ ovs-vsctl set open . external_ids:ovn-bridge-mappings="$ovn_bms"
 ovs-vsctl remove open . external_ids ovn-bridge-mappings-back
 
 # Delete controller from integration bridge
-ovs-vsctl del-controller {{ ovn_bridge }}
+# ovs-vsctl del-controller {{ ovn_bridge }}
 
 # Activate ovn-controller by configuring integration bridge
 ovs-vsctl set open . external_ids:ovn-bridge={{ ovn_bridge }}
