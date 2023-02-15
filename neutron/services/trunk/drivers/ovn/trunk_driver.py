@@ -17,6 +17,7 @@ from neutron_lib.callbacks import resources
 from neutron_lib import context as n_context
 from neutron_lib.db import api as db_api
 from neutron_lib import exceptions as n_exc
+from neutron_lib.plugins import directory
 from neutron_lib.services.trunk import constants as trunk_consts
 from oslo_config import cfg
 from oslo_log import log
@@ -24,6 +25,7 @@ from oslo_log import log
 from neutron.common.ovn.constants import OVN_ML2_MECH_DRIVER_NAME
 from neutron.objects import ports as port_obj
 from neutron.services.trunk.drivers import base as trunk_base
+from neutron.services.trunk.rpc import backend
 
 
 SUPPORTED_INTERFACES = (
@@ -210,3 +212,7 @@ class OVNTrunkDriver(trunk_base.DriverBase):
                    SUPPORTED_SEGMENTATION_TYPES,
                    None,
                    can_trunk_bound_port=True)
+
+    def register_rpc_backend(self):
+        tr_plugin = directory.get_plugins()['trunk']
+        tr_plugin.set_rpc_backend(backend.ServerSideRpcBackend())

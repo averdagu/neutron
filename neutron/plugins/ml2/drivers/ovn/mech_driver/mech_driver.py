@@ -376,6 +376,9 @@ class OVNMechanismDriver(api.MechanismDriver):
                 maintenance.DBInconsistenciesPeriodics(self._ovn_client))
             self._maintenance_thread.start()
             LOG.info("Maintenance task thread has started")
+        elif worker_class == service.RpcWorker:
+            LOG.debug("Registering RCP trunk")
+            self.trunk_driver.register_rpc_backend()
 
     def _create_security_group_precommit(self, resource, event, trigger,
                                          payload):
