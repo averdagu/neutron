@@ -1,8 +1,11 @@
 ---
 - name: cleanup ml2/OVS agents services
   hosts: ovn-controllers
+  vars:
+    db_sync_mode: migrate
   roles:
     - cleanup
+    - sync-dbs
 
 - name: cleanup Neutron ml2/OVS resources
   hosts: localhost

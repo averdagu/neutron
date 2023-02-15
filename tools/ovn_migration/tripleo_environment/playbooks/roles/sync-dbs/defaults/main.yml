@@ -1,2 +1,3 @@
 ---
 ovn_db_sync_container: "neutron-ovn-db-sync"
+db_sync_mode: "repair"
