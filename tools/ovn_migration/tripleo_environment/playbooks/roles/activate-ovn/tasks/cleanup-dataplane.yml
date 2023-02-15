@@ -2,6 +2,7 @@
 - name: cleanup ml2 ovs patch ports
   shell: |
     ovn_bms=$(ovs-vsctl get open . external_ids:ovn-bridge-mappings | tr -d '"')
+    IFS=,
     for bm in $ovn_bms; do
       patch_port=$(ovs-vsctl find interface type=patch options:peer=phy-$(echo $bm | cut -d : -f 2) | awk '/^name /{ print $3 }')
       if [ "x$patch_port" != "x" ] ; then
