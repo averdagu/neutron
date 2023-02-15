@@ -2,17 +2,17 @@
 - name: populate service facts
   service_facts:
 
-- name: "stop and disable {{ item }}"
-  systemd:
-    name: "{{ item }}"
-    state: stopped
-    enabled: no
-  when:
-    - ansible_facts.services[item] is defined
-    - ansible_facts.services[item]["status"] != "not-found"
-  loop:
-    - tripleo_ovn_controller.service
-    - tripleo_ovn_metadata_agent.service
+    #- name: "stop and disable {{ item }}"
+    #  systemd:
+    #    name: "{{ item }}"
+    #    state: stopped
+    #    enabled: no
+    #  when:
+    #    - ansible_facts.services[item] is defined
+    #    - ansible_facts.services[item]["status"] != "not-found"
+    #  loop:
+    #    - tripleo_ovn_controller.service
+    #    - tripleo_ovn_metadata_agent.service
 
 - include_tasks: deactivate-ovn.yml
   when: ovn_controller is defined
