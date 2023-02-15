@@ -1028,6 +1028,10 @@ class OVSNeutronAgent(l2population_rpc.L2populationRpcCallBackTunnelMixin,
         :param physical_network: the physical network for 'vlan' or 'flat'
         :param segmentation_id: the VID for 'vlan' or tunnel ID for 'tunnel'
         '''
+
+        # TODO(jlibosva): Add option to enabled this
+        if network_type == n_const.TYPE_GENEVE:
+           network_type = n_const.TYPE_VXLAN 
         lvm = self._add_local_vlan(net_uuid, network_type, physical_network,
                                    segmentation_id)
         if not lvm or not lvm.vlan:
