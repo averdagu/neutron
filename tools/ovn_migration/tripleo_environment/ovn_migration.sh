@@ -285,6 +285,7 @@ backup() {
 }
 
 install_ovn() {
+    source $STACKRC_FILE
     ansible-playbook -vv $ANSIBLE_DIR/playbooks/install-ovn.yml \
     -i hosts_for_migration \
     -e overcloud_ovn_deploy_script=$OVERCLOUD_OVN_DEPLOY_SCRIPT
