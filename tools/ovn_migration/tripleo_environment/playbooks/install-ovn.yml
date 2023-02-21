@@ -10,7 +10,8 @@
         option: migration_mode
         value: True
       become: yes
-      notify: restart OVS agents to pick the new configuration
+      notify: 
+        - restart OVS agents to pick the new configuration
 
   handlers:
     - name: restart OVS agents to pick the new configuration
