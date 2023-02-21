@@ -25,7 +25,7 @@
   ignore_errors: yes
 
 - name: sync neutron db with OVN db
-  command: podman run --name {{ ovn_db_sync_container }}
+  command: podman run --rm --name {{ ovn_db_sync_container }}
     -v /var/log/containers/neutron:/var/log/neutron
     -v /var/lib/config-data/puppet-generated/neutron/etc/neutron:/etc/neutron
     -v /etc/my.cnf.d/:/etc/my.cnf.d
