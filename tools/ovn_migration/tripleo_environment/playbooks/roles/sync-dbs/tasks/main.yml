@@ -3,7 +3,6 @@
   ansible.builtin.systemd:
     name: tripleo_neutron_api
     state: stopped
-  when: '{{ db_sync_mode == "repair" }}'
 
 - name: get neutron_server image url
   command: podman ps -a --filter "name=neutron_api" --format {% raw %}"{{.Image}}"{% endraw %}
@@ -47,8 +46,23 @@
   command: podman rm -f {{ ovn_db_sync_container }}
   when: ovn_central is defined
 
+- name: set migration mode to True
+  ini_file:
+    path: /var/lib/config-data/puppet-generated/neutron/etc/neutron/plugins/ml2/ml2_conf.ini
+    section: ml2
+    option: migration_mode
+    value: True
+  when: '{{ db_sync_mode == "repair" }}'
+
+- name: set migration mode to False
+  ini_file:
+    path: /var/lib/config-data/puppet-generated/neutron/etc/neutron/plugins/ml2/ml2_conf.ini
+    section: ml2
+    option: migration_mode
+    value: False
+  when: '{{ db_sync_mode == "migrate" }}'
+
 - name: start neutron_api containers
   ansible.builtin.systemd:
     name: tripleo_neutron_api
     state: started
-  when: '{{ db_sync_mode == "repair" }}'
