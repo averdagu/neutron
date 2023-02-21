@@ -1,10 +1,13 @@
 ---
 - name: cleanup ml2/OVS agents services
   hosts: ovn-controllers
-  vars:
-    db_sync_mode: migrate
   roles:
     - cleanup
+
+- name: migrate MySQL database to OVN
+  vars:
+    db_sync_mode: migrate
+  hosts: neutron-api
     - sync-dbs
 
 - name: cleanup Neutron ml2/OVS resources
