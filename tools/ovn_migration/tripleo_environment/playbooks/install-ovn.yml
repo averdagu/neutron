@@ -26,6 +26,17 @@
     - tripleo-update
   become: false
 
+- name: configure ovn-controller nodes
+  hosts: ovn-controllers
+  become: yes
+  tasks:
+    - name: backup bridge mappings
+      shell: |
+        ovn_bms=$(ovs-vsctl get open . external_ids:ovn-bridge-mappings | tr -d '"')
+        if [ "x$ovn_bms" != "x" ]; then
+            ovs-vsctl set open . external_ids:ovn-bridge-mappings-back="$ovn_bms" -- remove open . external_ids ovn-bridge-mappings
+        fi
+
 - name: sync dbs
   hosts: neutron-api
   roles:
