@@ -1,5 +1,5 @@
 ---
-- name: cleanup ml2 ovs patch ports
+- name: cleanup ml2 ovs patch ports and tunneling
   shell: |
     ovn_bms=$(ovs-vsctl get open . external_ids:ovn-bridge-mappings | tr -d '"')
     IFS=,
@@ -11,6 +11,7 @@
         ovs-vsctl del-port $patch_peer
       fi
     done
+    ovs-vsctl --if-exists del-port patch-tun -- --if-exists del-br br-tun
 
 - name: Cleanup neutron router and dhcp interfaces
   shell: |
@@ -87,9 +88,6 @@
         ip netns delete $netns
     done
 
-- name: remove local vlan tags from ports
-  become: yes
-  shell: |
     for port in $(ovs-vsctl list-ports {{ ovn_bridge }}); do
         if ovs-vsctl get port $port tag | grep -q [0-9]; then
             ovs-vsctl set port $port tag="[]"
