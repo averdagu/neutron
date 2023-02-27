@@ -4,6 +4,11 @@ set -x
 
 source {{ overcloudrc }}
 
+# Wait for Neutron API
+while ! openstack network agent list > /dev/null; do
+    sleep 1
+done
+
 # Delete non alive neutron agents
 for agent in $(openstack network agent list | grep neutron- | grep -v 'ovn' | awk {'print $2'})
 do
