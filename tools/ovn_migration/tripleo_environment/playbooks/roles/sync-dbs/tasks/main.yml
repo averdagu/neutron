@@ -52,7 +52,7 @@
     section: ml2
     option: migration_mode
     value: True
-  when: '{{ db_sync_mode == "repair" }}'
+  when: db_sync_mode == "repair"
 
 - name: set migration mode to False
   ini_file:
@@ -60,7 +60,7 @@
     section: ml2
     option: migration_mode
     value: False
-  when: '{{ db_sync_mode == "migrate" }}'
+  when: db_sync_mode == "migrate"
 
 - name: start neutron_api containers
   ansible.builtin.systemd:
