@@ -2,33 +2,36 @@
 
 set -x
 
-# Reset OpenFlow protocol version before ovn-controller takes over
-ovs-vsctl set Bridge {{ ovn_bridge }} protocols=[]
-
 ovn_bms=$(ovs-vsctl get open . external_ids:ovn-bridge-mappings-back | tr -d '"')
 
-# restore bridge mappings
-ovs-vsctl set open . external_ids:ovn-bridge-mappings="$ovn_bms"
-ovs-vsctl remove open . external_ids ovn-bridge-mappings-back
+if [ "x$ovn_bms" != "x" ]; then
+    # Reset protocols on the provier bridges
+    OIFS=$IFS
+    IFS=,
+    for bm in $ovn_bms; do
+       bridge=$(echo $bm | cut -d : -f 2)
+       ovs-vsctl set Bridge $bridge protocols=[]
+    done
+    IFS=$OIFS
 
-# Delete controller from integration bridge
-# ovs-vsctl del-controller {{ ovn_bridge }}
+    ovs-vctl set open . external_ids:ovn-bridge-mappings="$ovn_bms" -- remove open . external_ids ovn-bridge-mappings-back
+fi
 
-# Activate ovn-controller by configuring integration bridge
-ovs-vsctl set open . external_ids:ovn-bridge={{ ovn_bridge }}
+# Activate ovn-controller by configuring integration bridge, configure bridge mappings and remove br-migration
+ovs-vsctl set open . external_ids:ovn-bridge={{ ovn_bridge }} -- --if-exists del-br br-migration
 
-OIFS=$IFS
-IFS=,
-for bm in $ovn_bms; do
-   bridge=$(echo $bm | cut -d : -f 2)
-   ovs-vsctl set-fail-mode $bridge standalone
-   ovs-vsctl set Bridge $bridge protocols=[]
-   ovs-vsctl del-controller $bridge
+# Wait for ovn-controller to catch up
+sleep 5
+
+# Reset OpenFlow protocol version before ovn-controller takes over, it will cause flow installation
+ovs-vsctl set Bridge {{ ovn_bridge }} protocols=[]
+
+# Wait for flows to be installed
+while [ $(ovs-ofctl dump-flows {{ ovn_bridge }} table=23 | grep resubmit -c) -eq 0 ]; do
+   :
 done
-IFS=$OIFS
 
-# Delete ovs bridges - br-tun and br-migration
-ovs-vsctl --if-exists del-br {{ tunnel_bridge }}
-ovs-vsctl --if-exists del-br br-migration
+# Flush datapath flows
+ovs-dpctl del-flows
 
 exit 0
