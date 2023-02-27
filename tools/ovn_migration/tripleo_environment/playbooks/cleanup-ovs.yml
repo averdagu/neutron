@@ -8,6 +8,7 @@
   vars:
     db_sync_mode: migrate
   hosts: neutron-api
+  roles:
     - sync-dbs
 
 - name: cleanup Neutron ml2/OVS resources
