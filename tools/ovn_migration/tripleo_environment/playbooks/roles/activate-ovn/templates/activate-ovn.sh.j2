@@ -14,7 +14,7 @@ if [ "x$ovn_bms" != "x" ]; then
     done
     IFS=$OIFS
 
-    ovs-vctl set open . external_ids:ovn-bridge-mappings="$ovn_bms" -- remove open . external_ids ovn-bridge-mappings-back
+    ovs-vsctl set open . external_ids:ovn-bridge-mappings="$ovn_bms" -- remove open . external_ids ovn-bridge-mappings-back
 fi
 
 # Activate ovn-controller by configuring integration bridge, configure bridge mappings and remove br-migration
