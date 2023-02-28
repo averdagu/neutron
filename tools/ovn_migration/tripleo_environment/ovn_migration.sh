@@ -359,7 +359,52 @@ complete details. This script needs to be run in 5 steps.
            Reduces the MTU of the neutron tenant networks networks. This
            step is only necessary for VXLAN or GRE based tenant networking.
 
- Step 5 -> TODO: Document it
+ Step 5 -> Do the migration
+
+           The migration has been divided by stages in order to handle the
+           migration using batches
+
+ Step 5.1 -> ovn_migration.sh backup
+
+           Backup all the controllers using the ReaR technology
+           https://docs.openstack.org/project-deploy-guide/tripleo-docs/latest/post_deployment/backup_and_restore/05_rear
+           if BACKUP_MIGRATION_IP is reachable.
+           (configurable by doing: export BACKUP_MIGRATION_IP=x.x.x.x)
+
+           Then backups all the tripleo containers definitions on all
+           the ovn-controllers.
+
+ Step 5.2 -> ovn_migration.sh install-ovn
+
+           Triggers an overcloud_deploy that will install OVN. Also stops
+           neutron_api while populate the NB DB with the information on
+           the Neutron DB.
+
+ Step 5.3 -> ovn_migration.sh activate-ovn [batch_name]
+
+           Stop all OVS services, then configure ovn with br-int instead
+           of br-migration and finally clean up all OVS interfaces and other
+           resources.
+
+           If batch_name is specified will only activate OVN on all the
+           devices specified under batch_name on the inventory file.
+
+ Step 5.4 -> ovn_migration.sh cleanup-ovs
+
+           Removes all OVS services and containers, stop neutron_api while
+           converts trunk information to be compatible with OVN. Then removes
+           all neutron resources that were created and are not used with OVN.
+
+ Step A -> ovn_migration.sh revert-ovn [batch_name]
+
+           Undo all the steps done in the step 5.3. OVN goes back to be configured
+           with br-migration, deletes all flows installed on br-int and all
+           OVN interfaces. Then starts again all the OVS agents (that were
+           stoped on step 5.2)
+
+           If batch_name is specified will only activate OVN on all the
+           devices specified under batch_name in the inventory file.
+
 EOF
 
 }
